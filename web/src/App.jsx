@@ -1,7 +1,14 @@
+// web/src/App.jsx
 import * as React from "react";
 import { db, auth } from "./firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
 import { collection, getDocs } from "firebase/firestore";
+
+// ⬇️ Add the chat component
+import TutorChat from "./components/TutorChat";
 
 export default function App() {
   React.useEffect(() => {
@@ -24,5 +31,15 @@ export default function App() {
       console.log("signed in and read Firestore:", snap.size, "docs");
     })();
   }, []);
-  return <h1 style={{padding:24}}>Vite + React + Firebase</h1>;
+
+  return (
+    <div style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+      <h1>Vite + React + Firebase</h1>
+
+      {/* Chat UI */}
+      <div style={{ marginTop: 16 }}>
+        <TutorChat />
+      </div>
+    </div>
+  );
 }

@@ -1,15 +1,28 @@
-# Node / React
+# dependencies
 node_modules/
+functions/node_modules/
+web/node_modules/
+
+# env / secrets
+*.env
+*.env.*
+functions/.env
+functions/.env.local
+web/.env
+web/.env.local
+
+# builds & caches
 dist/
-.env
-.DS_Store
-
-# Windows / OneDrive 
-desktop.ini
-Thumbs.db
-*.tmp
+web/dist/
+.vite/
+web/.vite/
+.next/
+coverage/
 *.log
-~*
+firebase-debug.log
+.firebaserc.backup*
 
-# VSCode
-.vscode/
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
