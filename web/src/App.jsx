@@ -21,7 +21,7 @@ export default function App() {
         }
       }
       const snap = await getDocs(collection(db, "test"));
-      console.log("✅ signed in and read Firestore:", snap.size, "docs");
+      console.log("signed in and read Firestore:", snap.size, "docs");
     })();
   }, []);
   return <h1 style={{padding:24}}>Vite + React + Firebase</h1>;
