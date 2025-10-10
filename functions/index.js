@@ -32,7 +32,7 @@ const API_KEY = process.env.GEMINI_API_KEY;
 
 const DEFAULT_SYSTEM_PROMPT =
   process.env.DEFAULT_SYSTEM_PROMPT ||
-  "You are Tutor-AI. Responda em PT-BR, de forma clara, curta e prática. Use passos numerados quando ajudar.";
+  "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to learn.";
 
 const GEN_TEMPERATURE = Number(process.env.GEN_TEMPERATURE ?? 0.4);
 const GEN_TOP_P = Number(process.env.GEN_TOP_P ?? 0.9);
