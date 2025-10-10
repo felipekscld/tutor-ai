@@ -7,7 +7,7 @@ import {
 } from "firebase/auth";
 import { collection, getDocs } from "firebase/firestore";
 
-// ⬇️ Add the chat component
+
 import TutorChat from "./components/TutorChat";
 
 export default function App() {
@@ -18,7 +18,7 @@ export default function App() {
       try {
         await signInWithEmailAndPassword(auth, email, pass);
       } catch (e) {
-        // if wrong/missing user, create then sign in
+        
         if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential") {
           await createUserWithEmailAndPassword(auth, email, pass);
           await signInWithEmailAndPassword(auth, email, pass);

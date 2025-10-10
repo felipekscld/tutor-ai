@@ -42,16 +42,16 @@ export async function* streamTutor({ endpoint, body, signal }) {
           }
           const token = obj.delta ?? obj.text ?? obj.content ?? obj.output ?? "";
           if (token) yield token;
-          // ignore diagnostic frames
+          
         } catch {
-          // ignore partial/keepalive
+          
         }
       }
     }
     return;
   }
 
-  // Non-SSE fallback: server returns one JSON line (or aggregated text)
+  
   const txt = await res.text();
   try {
     const obj = JSON.parse(txt);

@@ -6,7 +6,7 @@ import { marked } from "marked";
 export default function TutorChat() {
   const { send, cancel, loading, error } = useTutorStream();
   const [input, setInput] = useState("Planeje 25 minutos de estudo de matemática hoje.");
-  const [messages, setMessages] = useState([]); // [{role:"user"|"assistant", content:string}]
+  const [messages, setMessages] = useState([]); 
   const [streamBuf, setStreamBuf] = useState("");
 
   async function handleSend(e) {
@@ -17,25 +17,25 @@ export default function TutorChat() {
     const userMsg = { role: "user", content: prompt };
     const history = [...messages, userMsg];
 
-    setMessages(history);   // show user msg immediately
-    setInput("");           // clear input
-    setStreamBuf("");       // start clean stream buffer
+    setMessages(history);  
+    setInput("");           
+    setStreamBuf("");       
 
     const systemPrompt = "You are Tutor-AI. Responda em PT-BR, curto e prático.";
 
-    // Local accumulator avoids stale state after await
+    
     let acc = "";
 
     await send({
       systemPrompt,
-      messages: history, // send full transcript for context
+      messages: history, 
       onDelta: (t) => {
-        acc += t;                   // final value after stream ends
-        setStreamBuf((s) => s + t); // live bubble updates
+        acc += t;                   
+        setStreamBuf((s) => s + t); 
       },
     });
 
-    // Commit assistant turn after stream completes
+    
     setMessages((prev) => [...prev, { role: "assistant", content: acc }]);
     setStreamBuf("");
   }
@@ -96,7 +96,7 @@ export default function TutorChat() {
             {m.role === "assistant" ? (
               <div
                 style={{ whiteSpace: "normal" }}
-                // Note: marked parses markdown to HTML
+                
                 dangerouslySetInnerHTML={{ __html: marked.parse(m.content) }}
               />
             ) : (
@@ -119,7 +119,7 @@ export default function TutorChat() {
           >
             <div style={{ opacity: 0.7, fontSize: 12, marginBottom: 4 }}>Assistant</div>
             <div
-              // Render partial markdown while streaming
+              
               dangerouslySetInnerHTML={{ __html: marked.parse(streamBuf || "…") }}
             />
           </div>
