@@ -1,8 +1,8 @@
 // functions/index.js
 
-// ------------------------------
-// 1) Load environment variables (prefer functions/.env.local)
-// ------------------------------
+
+// load environment variables 
+
 const path = require("path");
 const fs = require("fs");
 const dotenv = require("dotenv");
@@ -14,18 +14,18 @@ const envPath = fs.existsSync(localEnvPath)
 
 dotenv.config({ path: envPath });
 
-// ------------------------------
-// 2) Imports
-// ------------------------------
+
+// imports
+
 const functions = require("firebase-functions");
 const cors = require("cors");
-// Node 18+ includes global fetch
+
 
 const corsHandler = cors({ origin: true });
 
-// ------------------------------
-// 3) Config
-// ------------------------------
+
+// config
+
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent`;
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -39,9 +39,9 @@ const GEN_TOP_P = Number(process.env.GEN_TOP_P ?? 0.9);
 const GEN_TOP_K = Number(process.env.GEN_TOP_K ?? 40);
 const GEN_MAX_TOKENS = Number(process.env.GEN_MAX_TOKENS ?? 512);
 
-// ------------------------------
-// Helpers
-// ------------------------------
+
+// helpers
+
 function extractTextFromCandidate(candidate) {
   let out = "";
   const parts = candidate?.content?.parts;
@@ -63,9 +63,9 @@ function endStream(res, hb) {
   res.end();
 }
 
-// ------------------------------
-// 4) HTTPS Function
-// ------------------------------
+
+// HTTPS Function
+
 exports.tutorChat = functions.https.onRequest((req, res) => {
   corsHandler(req, res, async () => {
     if (req.method === "OPTIONS") {
@@ -131,7 +131,7 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "text/event-stream", // nudge streaming
+          "Accept": "text/event-stream", 
           "x-goog-api-key": API_KEY,
         },
         body: JSON.stringify(body),
@@ -168,12 +168,12 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
               const json = JSON.parse(payload);
               const candidate = json?.candidates?.[0];
 
-              // stream incremental text if present
+              
               const delta = extractTextFromCandidate(candidate);
               if (delta) {
                 streamDelta(res, delta);
               } else {
-                // surface why there is no text
+                
                 const info = {
                   info: "no_text_chunk",
                   finishReason: candidate?.finishReason,
@@ -184,7 +184,7 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
                 res.write(`data: ${JSON.stringify(info)}\n\n`);
               }
             } catch {
-              // ignore partial JSON lines
+              
             }
           }
         }
@@ -196,27 +196,27 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
       // ---------- Fallback: not SSE ----------
       const bodyText = await upstream.text().catch(() => "");
 
-      // Handle NDJSON (newline-delimited objects)
+      
       const maybeLines = bodyText.split(/\r?\n/).filter(Boolean);
       let parsed;
       if (maybeLines.length > 1) {
-        // Try parse each line into an array of frames
+        
         const frames = [];
         for (const line of maybeLines) {
           try {
             frames.push(JSON.parse(line));
           } catch {
-            // ignore non-JSON lines
+            
           }
         }
         if (frames.length) parsed = frames;
       }
       if (!parsed) {
-        // Try parse as JSON (object or array)
+        
         try {
           parsed = JSON.parse(bodyText);
         } catch {
-          // Non-JSON fallback
+          
           res.write(`data: ${JSON.stringify({ info: "non_json_body", raw: bodyText })}\n\n`);
           endStream(res, heartbeat);
           return;
@@ -225,7 +225,7 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
 
       let aggregated = "";
 
-      // If array of frames, extract from each; else extract from single object
+      
       if (Array.isArray(parsed)) {
         for (const obj of parsed) {
           const cand = obj?.candidates?.[0];
@@ -237,10 +237,10 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
       }
 
       if (aggregated) {
-        // Stream as one chunk so client prints it
+        
         streamDelta(res, aggregated);
       } else {
-        // No text even after parsing; surface debug details
+        
         const debugPayload = Array.isArray(parsed)
           ? { info: "non_sse_no_text_array", raw: parsed }
           : {
