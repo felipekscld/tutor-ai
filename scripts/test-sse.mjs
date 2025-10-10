@@ -5,7 +5,7 @@ const endpoint =
   process.argv[2] ||
   "http://127.0.0.1:5001/tutor-ia-8a2fa/us-central1/tutorChat";
 
-// === Customize your prompt here if you want ===
+// Customize your prompt here
 const payload = {
   systemPrompt: "You are Tutor-AI. Responda em PT-BR, curto e prático.",
   messages: [{ role: "user", content: "Planeje 25 minutos de estudo de matemática hoje." }],
@@ -29,8 +29,8 @@ async function main() {
 
   const ct = res.headers.get("content-type") || "";
   if (!ct.includes("text/event-stream")) {
-    // Some proxies still stream with a generic content-type; don't hard fail,
-    // but warn so you know what's happening.
+    
+    
     console.warn("Warning: content-type is not text/event-stream ->", ct);
   }
 
@@ -48,16 +48,16 @@ async function main() {
 
     buffer += decoder.decode(value, { stream: true });
 
-    // Normalize CRLF to LF to simplify parsing
+    
     buffer = buffer.replace(/\r\n/g, "\n");
 
-    // Read line-by-line; keep remainder for next chunk
+    
     let nlIdx;
     while ((nlIdx = buffer.indexOf("\n")) !== -1) {
       const line = buffer.slice(0, nlIdx).trimEnd();
       buffer = buffer.slice(nlIdx + 1);
 
-      if (!line) continue; // skip blank/keep-alive lines
+      if (!line) continue; 
 
       if (line.startsWith("data:")) {
         const dataStr = line.slice(5).trim();
@@ -71,8 +71,8 @@ async function main() {
         try {
           const obj = JSON.parse(dataStr);
 
-          // Your Cloud Function emits { delta: "..." } for token chunks.
-          // Fall back to common fields if needed.
+          
+          
           const token =
             obj.delta ??
             obj.text ??
@@ -82,10 +82,10 @@ async function main() {
 
           if (typeof token === "string" && token.length > 0) {
             receivedAnyToken = true;
-            // Write tokens as they arrive (no newline)
+            
             process.stdout.write(token);
           } else {
-            // Rare non-text payloads; print for debugging without breaking the stream
+            
             if (obj.error) {
               console.error("\n[error]", obj.error);
             } else {
@@ -93,10 +93,10 @@ async function main() {
             }
           }
         } catch {
-          // Partial JSON or heartbeat—ignore silently
+          
         }
       }
-      // Ignore other SSE fields like "event:"—your server doesn't send them.
+      
     }
   }
 
