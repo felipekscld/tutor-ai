@@ -1,0 +1,15 @@
+# Node / React
+node_modules/
+dist/
+.env
+.DS_Store
+
+# Windows / OneDrive 
+desktop.ini
+Thumbs.db
+*.tmp
+*.log
+~*
+
+# VSCode
+.vscode/
