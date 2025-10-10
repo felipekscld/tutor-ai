@@ -5,7 +5,7 @@ import { marked } from "marked";
 
 export default function TutorChat() {
   const { send, cancel, loading, error } = useTutorStream();
-  const [input, setInput] = useState("Planeje 25 minutos de estudo de matemática hoje.");
+  const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]); 
   const [streamBuf, setStreamBuf] = useState("");
 
@@ -21,7 +21,7 @@ export default function TutorChat() {
     setInput("");           
     setStreamBuf("");       
 
-    const systemPrompt = "You are Tutor-AI. Responda em PT-BR, curto e prático.";
+    const systemPrompt = "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to learn.";
 
     
     let acc = "";
