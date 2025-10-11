@@ -7,8 +7,18 @@ import { saveTurn } from "../lib/chatStore";
 export default function TutorChat() {
   const { send, cancel, loading, error } = useTutorStream();
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([]); 
+  const [messages, setMessages] = useState([]);
   const [streamBuf, setStreamBuf] = useState("");
+
+  // Gera um userId anônimo e persistente para a demo 
+  const [userId] = useState(() => {
+    const k = "anonUserId";
+    const existing = localStorage.getItem(k);
+    if (existing) return existing;
+    const gen = "anon-" + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(k, gen);
+    return gen;
+  });
 
   async function handleSend(e) {
     e?.preventDefault?.();
@@ -18,29 +28,39 @@ export default function TutorChat() {
     const userMsg = { role: "user", content: prompt };
     const history = [...messages, userMsg];
 
-    setMessages(history);  
-    setInput("");           
-    setStreamBuf("");       
+    setMessages(history);
+    setInput("");
+    setStreamBuf("");
 
-    const systemPrompt = "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to go";
+    const systemPrompt =
+      "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to go";
 
-    
     let acc = "";
 
-    await send({
-      systemPrompt,
-      messages: history, 
-      onDelta: (t) => {
-        acc += t;                   
-        setStreamBuf((s) => s + t); 
-      },
-    });
+    try {
+      await send({
+        systemPrompt,
+        messages: history,
+        onDelta: (t) => {
+          acc += t;
+          setStreamBuf((s) => s + t);
+        },
+      });
+    } catch (err) {
+      console.error("Erro enviando para o tutor:", err);
+      return; 
+    }
 
-     
+    // Persiste a conversa no Firestore (coleção conversations via chatStore.js)
+    try {
+      await saveTurn({
+        userId,
+        messages: [...history, { role: "assistant", content: acc }],
+      });
+    } catch (err) {
+      console.error("Falha ao salvar conversa no Firestore:", err);
+    }
 
-    await saveTurn({ userId: auth.currentUser.uid, messages: [...history, { role: "assistant", content: acc }] });
-
-    
     setMessages((prev) => [...prev, { role: "assistant", content: acc }]);
     setStreamBuf("");
   }
@@ -101,7 +121,6 @@ export default function TutorChat() {
             {m.role === "assistant" ? (
               <div
                 style={{ whiteSpace: "normal" }}
-                
                 dangerouslySetInnerHTML={{ __html: marked.parse(m.content) }}
               />
             ) : (
@@ -123,14 +142,10 @@ export default function TutorChat() {
             }}
           >
             <div style={{ opacity: 0.7, fontSize: 12, marginBottom: 4 }}>Assistant</div>
-            <div
-              
-              dangerouslySetInnerHTML={{ __html: marked.parse(streamBuf || "…") }}
-            />
+            <div dangerouslySetInnerHTML={{ __html: marked.parse(streamBuf || "…") }} />
           </div>
         )}
       </div>
     </div>
   );
 }
-
