@@ -46,7 +46,7 @@ function extractTextFromCandidate(candidate) {
   let out = "";
   const parts = candidate?.content?.parts;
   if (Array.isArray(parts)) {
-    for (const p of parts) if (p?.text) out += p.text;
+    for (const p of parts) if (p && p.text) out += p.text;
   }
   return out;
 }
