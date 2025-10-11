@@ -1,16 +1,28 @@
-// web/src/components/TutorChat.jsx
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTutorStream } from "../hooks/useTutorStream";
 import { marked } from "marked";
 import { saveTurn } from "../lib/chatStore";
+import { db } from "../firebase";
+import {
+  collection, getDocs, orderBy, query, limit, deleteDoc, doc,
+} from "firebase/firestore";
 
 export default function TutorChat() {
   const { send, cancel, loading, error } = useTutorStream();
+
+  // chat
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [streamBuf, setStreamBuf] = useState("");
 
-  // Gera um userId anônimo e persistente para a demo 
+  // sidebar
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [search, setSearch] = useState("");
+
+  // userId demo
   const [userId] = useState(() => {
     const k = "anonUserId";
     const existing = localStorage.getItem(k);
@@ -20,27 +32,96 @@ export default function TutorChat() {
     return gen;
   });
 
+  // refs
+  const listRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const C = {
+    bg: "#0b1220",
+    panel: "#0f172a",
+    panel2: "#0e162d",
+    border: "#1f2a44",
+    user: "#10243e",
+    bot: "#0b1220",
+    text: "#e5e7eb",
+    accent: "#3b82f6",
+    highlight: "#1e3a8a",
+  };
+
+  const systemPrompt =
+    "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to go";
+
+  // auto-scroll
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages, streamBuf, loading]);
+
+  // auto-resize
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = "0px";
+    ta.style.height = Math.min(220, ta.scrollHeight) + "px";
+  }, [input]);
+
+  // carregar histórico
+  async function loadHistory() {
+    try {
+      setLoadingHistory(true);
+      const qy = query(
+        collection(db, "conversations"),
+        orderBy("createdAt", "desc"),
+        limit(50)
+      );
+      const snap = await getDocs(qy);
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setHistory(rows);
+    } catch (err) {
+      console.error("Falha ao carregar histórico:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+  useEffect(() => { loadHistory(); }, []);
+
+  function titleFromMessages(msgs) {
+    if (!Array.isArray(msgs) || !msgs.length) return "Sem título";
+    const firstUser = msgs.find((m) => m.role === "user");
+    const base = firstUser?.content || msgs[0].content || "Conversa";
+    return base.length > 38 ? base.slice(0, 38) + "…" : base;
+  }
+
+  const filteredHistory = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return history;
+    return history.filter((h) => {
+      const title = titleFromMessages(h.messages).toLowerCase();
+      const body = Array.isArray(h.messages)
+        ? h.messages.map((m) => (m.content || "").toLowerCase()).join(" ")
+        : "";
+      return title.includes(q) || body.includes(q);
+    });
+  }, [history, search]);
+
   async function handleSend(e) {
     e?.preventDefault?.();
     const prompt = input.trim();
-    if (!prompt) return;
+    if (!prompt || loading) return;
 
     const userMsg = { role: "user", content: prompt };
-    const history = [...messages, userMsg];
+    const historyMsgs = [...messages, userMsg];
 
-    setMessages(history);
+    setMessages(historyMsgs);
     setInput("");
     setStreamBuf("");
 
-    const systemPrompt =
-      "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to go";
-
     let acc = "";
-
     try {
       await send({
         systemPrompt,
-        messages: history,
+        messages: historyMsgs,
         onDelta: (t) => {
           acc += t;
           setStreamBuf((s) => s + t);
@@ -48,15 +129,16 @@ export default function TutorChat() {
       });
     } catch (err) {
       console.error("Erro enviando para o tutor:", err);
-      return; 
+      return;
     }
 
-    // Persiste a conversa no Firestore (coleção conversations via chatStore.js)
     try {
-      await saveTurn({
+      const savedId = await saveTurn({
         userId,
-        messages: [...history, { role: "assistant", content: acc }],
+        messages: [...historyMsgs, { role: "assistant", content: acc }],
       });
+      setActiveId(savedId);
+      loadHistory();
     } catch (err) {
       console.error("Falha ao salvar conversa no Firestore:", err);
     }
@@ -65,87 +147,343 @@ export default function TutorChat() {
     setStreamBuf("");
   }
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(e);
+    }
+  };
+
+  async function handleDeleteConversation(id) {
+    try {
+      await deleteDoc(doc(db, "conversations", id)); // <-- apaga do Firestore também
+      setHistory((prev) => prev.filter((c) => c.id !== id));
+      if (activeId === id) {
+        setActiveId(null);
+        setMessages([]);
+        setStreamBuf("");
+      }
+    } catch (err) {
+      console.error("Erro ao deletar conversa:", err);
+      alert("Não foi possível deletar a conversa.");
+    }
+  }
+
+  // FULLSCREEN
+  const layout = {
+    position: "fixed",
+    inset: 0,                    // top/right/bottom/left: 0
+    width: "100vw",
+    height: "100vh",
+    boxSizing: "border-box",
+    background: C.bg,
+    color: C.text,
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+    display: "grid",
+    gridTemplateColumns: showSidebar ? "320px 1fr" : "1fr",
+    gap: 16,
+    padding: 12,
+  };
+
+  const sidebarStyle = {
+    background: C.panel,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    padding: 12,
+    overflow: "hidden",
+    display: "grid",
+    gridTemplateRows: "auto auto 1fr",
+    gap: 10,
+    minWidth: 0,
+  };
+
+  const chatColumn = {
+    display: "grid",
+    gridTemplateRows: "auto 1fr auto",
+    gap: 12,
+    minWidth: 0,
+    minHeight: 0,
+  };
+
+  const header = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "12px 14px",
+    borderRadius: 12,
+    background: C.panel,
+    border: `1px solid ${C.border}`,
+  };
+
+  const board = {
+    overflowY: "auto",
+    background: C.panel,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    padding: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    minHeight: 0,
+  };
+
+  const row = (isUser) => ({
+    display: "flex",
+    width: "100%",
+    justifyContent: isUser ? "flex-end" : "flex-start",
+  });
+
+  const bubble = (isUser) => ({
+    maxWidth: "70%",
+    background: isUser ? C.user : C.bot,
+    border: `1px solid ${C.border}`,
+    color: C.text,
+    padding: "12px 14px",
+    borderRadius: 18,
+    lineHeight: 1.5,
+    boxShadow: "0 4px 14px rgba(0,0,0,.25)",
+    textAlign: "left",
+  });
+
+  const inputBar = {
+    display: "flex",
+    gap: 10,
+    alignItems: "flex-end",
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    background: C.panel,
+    padding: 10,
+  };
+
   return (
-    <div style={{ maxWidth: 720, margin: "24px auto", fontFamily: "system-ui, sans-serif" }}>
-      <h2>Tutor-AI (Local)</h2>
+    <div style={layout}>
+      {showSidebar && (
+        <aside style={sidebarStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontWeight: 700 }}>Histórico</div>
+            <button
+              onClick={loadHistory}
+              disabled={loadingHistory}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: `1px solid ${C.border}`,
+                background: "#0d1426",
+                color: C.text,
+                cursor: "pointer",
+              }}
+            >
+              {loadingHistory ? "Atualizando…" : "Atualizar"}
+            </button>
+          </div>
 
-      {/* Input */}
-      <form onSubmit={handleSend} style={{ display: "flex", gap: 8 }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Pergunte algo…"
-          style={{
-            flex: 1,
-            padding: 10,
-            borderRadius: 8,
-            border: "1px solid #444",
-            background: "#222",
-            color: "#fff",
-          }}
-        />
-        <button disabled={loading} type="submit" style={{ padding: "10px 14px" }}>
-          {loading ? "Sending…" : "Send"}
-        </button>
-        {loading && (
-          <button type="button" onClick={cancel} style={{ padding: "10px 14px" }}>
-            Stop
-          </button>
-        )}
-      </form>
-
-      {error && (
-        <pre style={{ color: "crimson", whiteSpace: "pre-wrap", marginTop: 12 }}>
-          {error}
-        </pre>
-      )}
-
-      {/* Transcript */}
-      <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-        {messages.map((m, i) => (
-          <div
-            key={i}
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar no histórico…"
             style={{
-              alignSelf: m.role === "user" ? "end" : "start",
-              background: m.role === "user" ? "#10243e" : "#0b1220",
-              color: "white",
+              width: "100%",
               padding: "10px 12px",
               borderRadius: 10,
-              maxWidth: "80%",
+              border: `1px solid ${C.border}`,
+              background: C.panel2,
+              color: C.text,
+              outline: "none",
             }}
-          >
-            <div style={{ opacity: 0.7, fontSize: 12, marginBottom: 4 }}>
-              {m.role === "user" ? "You" : "Assistant"}
-            </div>
+          />
+          
+          <div style={{ overflowY: "auto", display: "grid", gap: 8, paddingRight: 4, gridAutoRows: "max-content", alignContent: "start"}}>
+            {filteredHistory.length ? (
+              filteredHistory.map((h) => {
+                const title = titleFromMessages(h.messages);
+                const isActive = h.id === activeId;
+                const when =
+                  h.createdAt && h.createdAt.toDate
+                    ? h.createdAt.toDate().toLocaleString()
+                    : "—";
+                return (
+                  <div
+                    key={h.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      alignItems: "center",
+                      gap: 8,
+                      background: isActive ? C.highlight : C.panel2,
+                      border: `1px solid ${isActive ? C.accent : C.border}`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setActiveId(h.id);
+                        setMessages(Array.isArray(h.messages) ? h.messages : []);
+                        setStreamBuf("");
+                      }}
+                      style={{
+                        textAlign: "left",
+                        width: "100%",
+                        padding: "10px 12px",
+                        background: "transparent",
+                        border: "none",
+                        color: C.text,
+                        cursor: "pointer",
+                      }}
+                      title={when}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>{when}</div>
+                    </button>
 
-            {m.role === "assistant" ? (
-              <div
-                style={{ whiteSpace: "normal" }}
-                dangerouslySetInnerHTML={{ __html: marked.parse(m.content) }}
-              />
+                    <button
+                      onClick={() => handleDeleteConversation(h.id)}
+                      title="Excluir conversa"
+                      style={{
+                        marginRight: 8,
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        border: `1px solid ${C.border}`,
+                        background: "#281a1a",
+                        color: "#ffb4b4",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })
             ) : (
-              <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+              <div style={{ opacity: 0.7, fontSize: 14 }}>
+                {search ? "Nenhum resultado." : "Nenhuma conversa ainda."}
+              </div>
             )}
           </div>
-        ))}
+        </aside>
+      )}
 
-        {/* Live streaming bubble */}
-        {loading && (
-          <div
+      <section style={chatColumn}>
+        <div style={header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                background: C.accent,
+                display: "grid",
+                placeItems: "center",
+                color: "white",
+                fontWeight: 700,
+              }}
+            >
+              T
+            </div>
+            <div>
+              <div style={{ fontWeight: 700 }}>Tutor</div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowSidebar((v) => !v)}
             style={{
-              alignSelf: "start",
-              background: "#0b1220",
-              color: "white",
-              padding: "10px 12px",
+              padding: "8px 12px",
               borderRadius: 10,
-              maxWidth: "80%",
+              border: `1px solid ${C.border}`,
+              background: "#0d1426",
+              color: C.text,
+              cursor: "pointer",
             }}
           >
-            <div style={{ opacity: 0.7, fontSize: 12, marginBottom: 4 }}>Assistant</div>
-            <div dangerouslySetInnerHTML={{ __html: marked.parse(streamBuf || "…") }} />
-          </div>
-        )}
-      </div>
+            {showSidebar ? "⟨ Fechar histórico" : "🕒 Histórico"}
+          </button>
+        </div>
+
+        <div ref={listRef} style={board}>
+          {messages.map((m, i) => {
+            const isUser = m.role === "user";
+            return (
+              <div key={i} style={row(isUser)}>
+                <div style={bubble(isUser)}>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6, userSelect: "none" }}>
+                    {isUser ? "Você" : "Tutor-AI"}
+                  </div>
+                  {m.role === "assistant" ? (
+                    <div dangerouslySetInnerHTML={{ __html: marked.parse(m.content) }} />
+                  ) : (
+                    <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {loading && (
+            <div style={row(false)}>
+              <div style={bubble(false)}>
+                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6, userSelect: "none" }}>
+                  Tutor-AI está digitando…
+                </div>
+                <div dangerouslySetInnerHTML={{ __html: marked.parse(streamBuf || "…") }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleSend} style={inputBar}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Pergunte algo… (Enter para enviar, Shift+Enter para nova linha)"
+            rows={1}
+            style={{
+              flex: 1,
+              resize: "none",
+              overflow: "hidden",
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid " + C.border,
+              background: "#0d1426",
+              color: C.text,
+              lineHeight: 1.45,
+            }}
+          />
+          {loading && (
+            <button
+              type="button"
+              onClick={cancel}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: "#0d1426",
+                color: C.text,
+                cursor: "pointer",
+              }}
+            >
+              Parar
+            </button>
+          )}
+          <button
+            disabled={loading || !input.trim()}
+            type="submit"
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "none",
+              background: input.trim() ? C.accent : "#1f2a44",
+              color: "white",
+              cursor: input.trim() ? "pointer" : "not-allowed",
+              fontWeight: 600,
+            }}
+            title="Enviar (Enter)"
+          >
+            Enviar
+          </button>
+        </form>
+      </section>
     </div>
   );
 }
