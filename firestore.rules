@@ -1,59 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function authed() {
-      return request.auth != null;
-    }
-    function creatingForSelf() {
-      return authed() && request.resource.data.userId == request.auth.uid;
-    }
-    function owner(resourceData) {
-      return authed() && resourceData.userId == request.auth.uid;
-    }
-    // Impede trocar o dono após criado
-    function userIdUnchanged() {
-      return request.resource.data.userId == resource.data.userId;
-    }
-
-    // users: docId == uid
-    match /users/{userId} {
-      allow create: if authed() && userId == request.auth.uid;
-      allow read, update, delete: if authed() && userId == request.auth.uid;
-    }
-
-    // chat_history (doc com userId) + subcoleção messages
-    match /chat_history/{convId} {
-      allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
-
-      match /messages/{messageId} {
-        allow create: if creatingForSelf();
-        allow read, update, delete: if owner(resource.data) && userIdUnchanged();
-      }
-    }
-
-    // demais coleções do seu app (cada doc tem userId)
-    match /exams/{docId} {
-      allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
-    }
-    match /schedule/{docId} {
-      allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
-    }
-    match /progress/{docId} {
-      allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
-    }
-    match /topics/{docId} {
-      allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
-    }
-
-    // trava todo o resto
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null;
     }
   }
 }
