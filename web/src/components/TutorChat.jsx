@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useTutorStream } from "../hooks/useTutorStream";
 import { marked } from "marked";
+import { saveTurn } from "../lib/chatStore";
 
 export default function TutorChat() {
   const { send, cancel, loading, error } = useTutorStream();
@@ -21,7 +22,7 @@ export default function TutorChat() {
     setInput("");           
     setStreamBuf("");       
 
-    const systemPrompt = "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to learn.";
+    const systemPrompt = "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to go";
 
     
     let acc = "";
@@ -34,6 +35,10 @@ export default function TutorChat() {
         setStreamBuf((s) => s + t); 
       },
     });
+
+     
+
+    await saveTurn({ userId: auth.currentUser.uid, messages: [...history, { role: "assistant", content: acc }] });
 
     
     setMessages((prev) => [...prev, { role: "assistant", content: acc }]);
