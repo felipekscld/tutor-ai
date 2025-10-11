@@ -34,10 +34,10 @@ const DEFAULT_SYSTEM_PROMPT =
   process.env.DEFAULT_SYSTEM_PROMPT ||
   "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to learn.";
 
-const GEN_TEMPERATURE = Number(process.env.GEN_TEMPERATURE ?? 0.4);
+const GEN_TEMPERATURE = Number(process.env.GEN_TEMPERATURE ?? 0.55);
 const GEN_TOP_P = Number(process.env.GEN_TOP_P ?? 0.9);
 const GEN_TOP_K = Number(process.env.GEN_TOP_K ?? 40);
-const GEN_MAX_TOKENS = Number(process.env.GEN_MAX_TOKENS ?? 512);
+const GEN_MAX_TOKENS = Number(process.env.GEN_MAX_TOKENS ?? 1024);
 
 
 // helpers
