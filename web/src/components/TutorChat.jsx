@@ -1,3 +1,4 @@
+// web/src/components/TutorChat.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTutorStream } from "../hooks/useTutorStream";
 import { marked } from "marked";
@@ -10,33 +11,31 @@ import {
 export default function TutorChat() {
   const { send, cancel, loading, error } = useTutorStream();
 
-  // chat
+  // ========= chat state =========
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [streamBuf, setStreamBuf] = useState("");
 
-  // sidebar
+  // ========= sidebar =========
   const [showSidebar, setShowSidebar] = useState(true);
   const [history, setHistory] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [search, setSearch] = useState("");
 
-  // userId demo
-  const [userId] = useState(() => {
-    const k = "anonUserId";
-    const existing = localStorage.getItem(k);
-    if (existing) return existing;
-    const gen = "anon-" + Math.random().toString(36).slice(2, 10);
-    localStorage.setItem(k, gen);
-    return gen;
-  });
-
-  // refs
-  const listRef = useRef(null);
-  const inputRef = useRef(null);
-
-  const C = {
+  // ========= theme (light/dark) =========
+  const C_LIGHT = {
+    bg: "#f8fafc",
+    panel: "#ffffff",
+    panel2: "#f1f5f9",
+    border: "#d1d5db",
+    user: "#e0f2fe",
+    bot: "#f9fafb",
+    text: "#111827",
+    accent: "#2563eb",
+    highlight: "#bfdbfe",
+  };
+  const C_DARK = {
     bg: "#0b1220",
     panel: "#0f172a",
     panel2: "#0e162d",
@@ -48,17 +47,46 @@ export default function TutorChat() {
     highlight: "#1e3a8a",
   };
 
+  const [darkMode, setDarkMode] = useState(() => {
+    // persiste a escolha
+    const v = localStorage.getItem("tutor-darkmode");
+    return v ? v === "1" : false;
+  });
+  const C = darkMode ? C_DARK : C_LIGHT;
+
+  useEffect(() => {
+    localStorage.setItem("tutor-darkmode", darkMode ? "1" : "0");
+    // também ajusta o background do body pra não piscar
+    document.body.style.background = C.bg;
+    document.body.style.color = C.text;
+  }, [darkMode]); // eslint-disable-line
+
+  // ========= demo user id =========
+  const [userId] = useState(() => {
+    const k = "anonUserId";
+    const existing = localStorage.getItem(k);
+    if (existing) return existing;
+    const gen = "anon-" + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(k, gen);
+    return gen;
+  });
+
+  // ========= refs =========
+  const listRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // ========= system prompt =========
   const systemPrompt =
     "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to go";
 
-  // auto-scroll
+  // ========= auto-scroll =========
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, streamBuf, loading]);
 
-  // auto-resize
+  // ========= auto-resize textarea =========
   useEffect(() => {
     const ta = inputRef.current;
     if (!ta) return;
@@ -66,7 +94,7 @@ export default function TutorChat() {
     ta.style.height = Math.min(220, ta.scrollHeight) + "px";
   }, [input]);
 
-  // carregar histórico
+  // ========= firestore (load history) =========
   async function loadHistory() {
     try {
       setLoadingHistory(true);
@@ -86,6 +114,7 @@ export default function TutorChat() {
   }
   useEffect(() => { loadHistory(); }, []);
 
+  // ========= helpers =========
   function titleFromMessages(msgs) {
     if (!Array.isArray(msgs) || !msgs.length) return "Sem título";
     const firstUser = msgs.find((m) => m.role === "user");
@@ -105,6 +134,7 @@ export default function TutorChat() {
     });
   }, [history, search]);
 
+  // ========= send =========
   async function handleSend(e) {
     e?.preventDefault?.();
     const prompt = input.trim();
@@ -154,9 +184,10 @@ export default function TutorChat() {
     }
   };
 
+  // ========= delete conversation =========
   async function handleDeleteConversation(id) {
     try {
-      await deleteDoc(doc(db, "conversations", id)); // <-- apaga do Firestore também
+      await deleteDoc(doc(db, "conversations", id)); // remove no Firestore também
       setHistory((prev) => prev.filter((c) => c.id !== id));
       if (activeId === id) {
         setActiveId(null);
@@ -169,10 +200,10 @@ export default function TutorChat() {
     }
   }
 
-  // FULLSCREEN
+  // ========= layout (fullscreen) =========
   const layout = {
     position: "fixed",
-    inset: 0,                    // top/right/bottom/left: 0
+    inset: 0,
     width: "100vw",
     height: "100vh",
     boxSizing: "border-box",
@@ -241,9 +272,16 @@ export default function TutorChat() {
     padding: "12px 14px",
     borderRadius: 18,
     lineHeight: 1.5,
-    boxShadow: "0 4px 14px rgba(0,0,0,.25)",
+    boxShadow: "0 4px 14px rgba(0,0,0,.08)",
     textAlign: "left",
   });
+
+  // variações por tema
+  const disabledSendBg = darkMode ? "#1f2a44" : "#e5e7eb";
+  const disabledSendText = darkMode ? "#cbd5e1" : "#9ca3af";
+  const deleteStyles = darkMode
+    ? { bg: "#281a1a", border: C.border, text: "#ffb4b4" }
+    : { bg: "#fee2e2", border: "#fecaca", text: "#991b1b" };
 
   const inputBar = {
     display: "flex",
@@ -257,6 +295,7 @@ export default function TutorChat() {
 
   return (
     <div style={layout}>
+      {/* ======== Sidebar ======== */}
       {showSidebar && (
         <aside style={sidebarStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -268,7 +307,7 @@ export default function TutorChat() {
                 padding: "6px 10px",
                 borderRadius: 8,
                 border: `1px solid ${C.border}`,
-                background: "#0d1426",
+                background: C.panel2,   // tema
                 color: C.text,
                 cursor: "pointer",
               }}
@@ -291,8 +330,17 @@ export default function TutorChat() {
               outline: "none",
             }}
           />
-          
-          <div style={{ overflowY: "auto", display: "grid", gap: 8, paddingRight: 4, gridAutoRows: "max-content", alignContent: "start"}}>
+
+          <div
+            style={{
+              overflowY: "auto",
+              display: "grid",
+              gap: 8,
+              paddingRight: 4,
+              gridAutoRows: "max-content",
+              alignContent: "start",
+            }}
+          >
             {filteredHistory.length ? (
               filteredHistory.map((h) => {
                 const title = titleFromMessages(h.messages);
@@ -342,9 +390,9 @@ export default function TutorChat() {
                         marginRight: 8,
                         padding: "6px 8px",
                         borderRadius: 8,
-                        border: `1px solid ${C.border}`,
-                        background: "#281a1a",
-                        color: "#ffb4b4",
+                        border: `1px solid ${deleteStyles.border}`,
+                        background: deleteStyles.bg,
+                        color: deleteStyles.text,
                         cursor: "pointer",
                       }}
                     >
@@ -362,6 +410,7 @@ export default function TutorChat() {
         </aside>
       )}
 
+      {/* ======== Chat column ======== */}
       <section style={chatColumn}>
         <div style={header}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -384,19 +433,36 @@ export default function TutorChat() {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowSidebar((v) => !v)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: `1px solid ${C.border}`,
-              background: "#0d1426",
-              color: C.text,
-              cursor: "pointer",
-            }}
-          >
-            {showSidebar ? "⟨ Fechar histórico" : "🕒 Histórico"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setDarkMode((v) => !v)}
+              title={darkMode ? "Modo claro" : "Modo escuro"}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: C.panel2,   // tema
+                color: C.text,
+                cursor: "pointer",
+              }}
+            >
+              {darkMode ? "White" : "Dark"}
+            </button>
+
+            <button
+              onClick={() => setShowSidebar((v) => !v)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: C.panel2,   // tema
+                color: C.text,
+                cursor: "pointer",
+              }}
+            >
+              {showSidebar ? "⟨ Fechar histórico" : "🕒 Histórico"}
+            </button>
+          </div>
         </div>
 
         <div ref={listRef} style={board}>
@@ -445,7 +511,7 @@ export default function TutorChat() {
               padding: 12,
               borderRadius: 10,
               border: "1px solid " + C.border,
-              background: "#0d1426",
+              background: C.panel2, // tema
               color: C.text,
               lineHeight: 1.45,
             }}
@@ -458,7 +524,7 @@ export default function TutorChat() {
                 padding: "10px 14px",
                 borderRadius: 10,
                 border: `1px solid ${C.border}`,
-                background: "#0d1426",
+                background: C.panel2, // tema
                 color: C.text,
                 cursor: "pointer",
               }}
@@ -473,8 +539,8 @@ export default function TutorChat() {
               padding: "10px 14px",
               borderRadius: 10,
               border: "none",
-              background: input.trim() ? C.accent : "#1f2a44",
-              color: "white",
+              background: input.trim() ? C.accent : disabledSendBg,
+              color: input.trim() ? "white" : disabledSendText,
               cursor: input.trim() ? "pointer" : "not-allowed",
               fontWeight: 600,
             }}
@@ -483,6 +549,21 @@ export default function TutorChat() {
             Enviar
           </button>
         </form>
+
+        {error && (
+          <pre
+            style={{
+              color: darkMode ? "#ff8a8a" : "crimson",
+              whiteSpace: "pre-wrap",
+              background: C.panel2,
+              padding: 10,
+              borderRadius: 8,
+              border: `1px solid ${C.border}`,
+            }}
+          >
+            {error}
+          </pre>
+        )}
       </section>
     </div>
   );
