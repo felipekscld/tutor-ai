@@ -1,50 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function authed() {
       return request.auth != null;
     }
-    // Create-for-self and own-doc checks for top-level collections that store userId
     function creatingForSelf() {
       return authed() && request.resource.data.userId == request.auth.uid;
     }
     function owner(resourceData) {
       return authed() && resourceData.userId == request.auth.uid;
     }
+    // Impede trocar o dono após criado
+    function userIdUnchanged() {
+      return request.resource.data.userId == resource.data.userId;
+    }
 
-    // ---- Chat history (you’re using this now)
+    // users: docId == uid
+    match /users/{userId} {
+      allow create: if authed() && userId == request.auth.uid;
+      allow read, update, delete: if authed() && userId == request.auth.uid;
+    }
+
+    // chat_history (doc com userId) + subcoleção messages
     match /chat_history/{convId} {
       allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data);
+      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
+
+      match /messages/{messageId} {
+        allow create: if creatingForSelf();
+        allow read, update, delete: if owner(resource.data) && userIdUnchanged();
+      }
     }
 
-    // ---- Profiles (1 doc per user in top-level `profiles`)
-    // You’ll likely read/write your own profile only.
-    match /profiles/{uid} {
-      allow create: if authed() && uid == request.auth.uid;
-      allow read, update, delete: if authed() && uid == request.auth.uid;
-    }
-
-    // ---- Optional collections you showed (assumes each doc has userId)
-    // If your schema differs, keep them locked for now or adjust similarly.
+    // demais coleções do seu app (cada doc tem userId)
     match /exams/{docId} {
       allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data);
-    }
-    match /progress/{docId} {
-      allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data);
+      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
     }
     match /schedule/{docId} {
       allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data);
+      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
+    }
+    match /progress/{docId} {
+      allow create: if creatingForSelf();
+      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
     }
     match /topics/{docId} {
       allow create: if creatingForSelf();
-      allow read, update, delete: if owner(resource.data);
+      allow read, update, delete: if owner(resource.data) && userIdUnchanged();
     }
 
-    // Lock everything else until explicitly opened
+    // trava todo o resto
     match /{document=**} {
       allow read, write: if false;
     }
