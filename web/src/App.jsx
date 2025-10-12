@@ -7,10 +7,14 @@ import {
 } from "firebase/auth";
 import { collection, getDocs } from "firebase/firestore";
 
-
 import TutorChat from "./components/TutorChat";
+import WelcomeScreen from "./components/WelcomeScreen";
 
 export default function App() {
+  const [hasObjective, setHasObjective] = React.useState(
+    () => localStorage.getItem("tutor-hasObjective") === "true"
+  );
+
   React.useEffect(() => {
     (async () => {
       const email = "demo@uni.com";
@@ -32,14 +36,30 @@ export default function App() {
     })();
   }, []);
 
-  return (
-    <div style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-      <h1>Vite + React + Firebase</h1>
+  // Demo reset shortcut (Ctrl+Shift+R)
+  React.useEffect(() => {
+    const handleKey = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+        localStorage.removeItem("tutor-objective");
+        localStorage.removeItem("tutor-timeframe");
+        localStorage.removeItem("tutor-hasObjective");
+        setHasObjective(false);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
 
-      {/* Chat UI */}
-      <div style={{ marginTop: 16 }}>
-        <TutorChat />
-      </div>
-    </div>
+  const handleOnboardingComplete = ({ objective, timeframe }) => {
+    localStorage.setItem("tutor-objective", objective);
+    localStorage.setItem("tutor-timeframe", timeframe);
+    localStorage.setItem("tutor-hasObjective", "true");
+    setHasObjective(true);
+  };
+
+  return hasObjective ? (
+    <TutorChat />
+  ) : (
+    <WelcomeScreen onComplete={handleOnboardingComplete} />
   );
 }

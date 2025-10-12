@@ -37,15 +37,15 @@ export default function TutorChat() {
     highlight: "#bfdbfe",
   };
   const C_DARK = {
-    bg: "#0b1220",
-    panel: "#0f172a",
-    panel2: "#0e162d",
-    border: "#1f2a44",
-    user: "#10243e",
-    bot: "#0b1220",
-    text: "#e5e7eb",
+    bg: "#18181b",
+    panel: "#27272a",
+    panel2: "#1f2125",
+    border: "#3f3f46",
+    user: "#2a2d35",
+    bot: "#18181b",
+    text: "#f4f4f5",
     accent: "#3b82f6",
-    highlight: "#1e3a8a",
+    highlight: "#3f3f46",
   };
 
   const [darkMode, setDarkMode] = useState(() => {
@@ -354,10 +354,10 @@ Você tem conhecimento profundo em todas as áreas acadêmicas: matemática, fí
   });
 
   // variações por tema
-  const disabledSendBg = darkMode ? "#1f2a44" : "#e5e7eb";
-  const disabledSendText = darkMode ? "#cbd5e1" : "#9ca3af";
+  const disabledSendBg = darkMode ? "#3f3f46" : "#e5e7eb";
+  const disabledSendText = darkMode ? "#a1a1aa" : "#9ca3af";
   const deleteStyles = darkMode
-    ? { bg: "#281a1a", border: C.border, text: "#ffb4b4" }
+    ? { bg: "#3c1f1f", border: C.border, text: "#fca5a5" }
     : { bg: "#fee2e2", border: "#fecaca", text: "#991b1b" };
 
   const inputBar = {
@@ -507,6 +507,11 @@ Você tem conhecimento profundo em todas as áreas acadêmicas: matemática, fí
             </div>
             <div>
               <div style={{ fontWeight: 700 }}>Tutor</div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>
+                {localStorage.getItem("tutor-objective") 
+                  ? `Objetivo: ${localStorage.getItem("tutor-objective")}`
+                  : "Seu assistente de estudos"}
+              </div>
             </div>
           </div>
 
@@ -646,7 +651,7 @@ Você tem conhecimento profundo em todas as áreas acadêmicas: matemática, fí
         {error && (
           <pre
             style={{
-              color: darkMode ? "#ff8a8a" : "crimson",
+              color: darkMode ? "#fca5a5" : "crimson",
               whiteSpace: "pre-wrap",
               background: C.panel2,
               padding: 10,
