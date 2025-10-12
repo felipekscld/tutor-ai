@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTutorStream } from "../hooks/useTutorStream";
 import { marked } from "marked";
-import { saveTurn, updateTurn } from "../lib/chatStore";
+import { saveTurn, updateTurn, updateConversationTitle } from "../lib/chatStore";
+import { generateConversationTitle } from "../lib/generateTitle";
 import { db } from "../firebase";
 import {
   collection, getDocs, orderBy, query, limit, deleteDoc, doc,
@@ -76,8 +77,20 @@ export default function TutorChat() {
   const inputRef = useRef(null);
 
   // ========= system prompt =========
-  const systemPrompt =
-    "Answer in PT-BR. You are a study tutor - who knows everything about every subjects and will help students to go";
+  const systemPrompt = `Você é um tutor de estudos especializado e experiente. Sua missão é ajudar estudantes a aprender e compreender diversos assuntos de forma clara e eficaz.
+
+INSTRUÇÕES:
+- Sempre responda em português brasileiro (PT-BR)
+- Seja claro, didático e encorajador
+- Use exemplos práticos quando apropriado
+- Divida conceitos complexos em partes simples
+- Forneça explicações passo a passo
+- Faça perguntas para verificar a compreensão
+- Adapte seu nível de explicação ao contexto da pergunta
+- Incentive o pensamento crítico e o aprendizado ativo
+- Quando relevante, sugira exercícios ou materiais complementares
+
+Você tem conhecimento profundo em todas as áreas acadêmicas: matemática, física, química, biologia, história, geografia, línguas, literatura, programação, e muito mais.`;
 
   // ========= auto-scroll =========
   useEffect(() => {
@@ -115,10 +128,17 @@ export default function TutorChat() {
   useEffect(() => { loadHistory(); }, []);
 
   // ========= helpers =========
-  function titleFromMessages(msgs) {
-    if (!Array.isArray(msgs) || !msgs.length) return "Sem título";
+  function titleFromConversation(conversation) {
+    // Use stored title if available
+    if (conversation.title) {
+      return conversation.title;
+    }
+    
+    // Fallback to first user message
+    const msgs = conversation.messages;
+    if (!Array.isArray(msgs) || !msgs.length) return "Nova Conversa";
     const firstUser = msgs.find((m) => m.role === "user");
-    const base = firstUser?.content || msgs[0].content || "Conversa";
+    const base = firstUser?.content || msgs[0]?.content || "Conversa";
     return base.length > 38 ? base.slice(0, 38) + "…" : base;
   }
 
@@ -126,7 +146,7 @@ export default function TutorChat() {
     const q = search.trim().toLowerCase();
     if (!q) return history;
     return history.filter((h) => {
-      const title = titleFromMessages(h.messages).toLowerCase();
+      const title = titleFromConversation(h).toLowerCase();
       const body = Array.isArray(h.messages)
         ? h.messages.map((m) => (m.content || "").toLowerCase()).join(" ")
         : "";
@@ -166,6 +186,8 @@ export default function TutorChat() {
 
     try {
       let conversationId;
+      const isFirstExchange = finalMessages.length === 2; // First user msg + first assistant reply
+      
       if (activeId) {
         // Update existing conversation
         conversationId = await updateTurn({
@@ -180,7 +202,20 @@ export default function TutorChat() {
         });
         setActiveId(conversationId);
       }
+      
       loadHistory();
+
+      // Generate title for first exchange (async, don't block UI)
+      if (isFirstExchange && conversationId) {
+        const endpoint = import.meta.env.VITE_TUTOR_ENDPOINT;
+        generateConversationTitle({ endpoint, messages: finalMessages })
+          .then(title => {
+            updateConversationTitle({ conversationId, title })
+              .then(() => loadHistory())
+              .catch(err => console.error("Failed to update title:", err));
+          })
+          .catch(err => console.error("Failed to generate title:", err));
+      }
     } catch (err) {
       console.error("Falha ao salvar conversa no Firestore:", err);
     }
@@ -363,7 +398,7 @@ export default function TutorChat() {
           >
             {filteredHistory.length ? (
               filteredHistory.map((h) => {
-                const title = titleFromMessages(h.messages);
+                const title = titleFromConversation(h);
                 const isActive = h.id === activeId;
                 const when =
                   h.createdAt && h.createdAt.toDate
