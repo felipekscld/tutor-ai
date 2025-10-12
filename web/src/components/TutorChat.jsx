@@ -168,6 +168,8 @@ Você tem conhecimento profundo em todas as áreas acadêmicas: matemática, fí
     setStreamBuf("");
 
     let acc = "";
+    let streamError = null;
+    
     try {
       await send({
         systemPrompt,
@@ -179,6 +181,26 @@ Você tem conhecimento profundo em todas as áreas acadêmicas: matemática, fí
       });
     } catch (err) {
       console.error("Erro enviando para o tutor:", err);
+      streamError = err;
+      
+      // Show error message in chat
+      const errorMsg = {
+        role: "assistant",
+        content: `❌ **Erro ao conectar com o tutor**\n\nNão foi possível obter uma resposta no momento. Por favor, tente novamente.\n\n_Detalhes: ${err.message || "Erro desconhecido"}_`,
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+      setStreamBuf("");
+      return;
+    }
+
+    // Handle empty responses
+    if (!acc || acc.trim() === "") {
+      const errorMsg = {
+        role: "assistant",
+        content: `⚠️ **Resposta vazia**\n\nO tutor não retornou uma resposta. Isso pode acontecer devido a filtros de segurança ou problemas temporários.\n\nPor favor, tente reformular sua pergunta.`,
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+      setStreamBuf("");
       return;
     }
 
@@ -517,7 +539,7 @@ Você tem conhecimento profundo em todas as áreas acadêmicas: matemática, fí
                 cursor: "pointer",
               }}
             >
-              {darkMode ? "White" : "Dark"}
+              {darkMode ? "Claro" : "Escuro"}
             </button>
 
             <button
