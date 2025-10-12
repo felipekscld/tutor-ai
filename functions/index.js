@@ -26,8 +26,8 @@ const corsHandler = cors({ origin: true });
 
 // config
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent`;
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`;
 const API_KEY = process.env.GEMINI_API_KEY;
 
 const DEFAULT_SYSTEM_PROMPT =
@@ -37,7 +37,7 @@ const DEFAULT_SYSTEM_PROMPT =
 const GEN_TEMPERATURE = Number(process.env.GEN_TEMPERATURE ?? 0.55);
 const GEN_TOP_P = Number(process.env.GEN_TOP_P ?? 0.9);
 const GEN_TOP_K = Number(process.env.GEN_TOP_K ?? 40);
-const GEN_MAX_TOKENS = Number(process.env.GEN_MAX_TOKENS ?? 1024);
+const GEN_MAX_TOKENS = Number(process.env.GEN_MAX_TOKENS ?? 2048);
 
 
 // helpers
@@ -131,8 +131,7 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "text/event-stream", 
-          "x-goog-api-key": API_KEY,
+          "Accept": "text/event-stream",
         },
         body: JSON.stringify(body),
       });
@@ -150,15 +149,21 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
       if (upstreamCT.includes("text/event-stream")) {
         const reader = upstream.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = ""; // Buffer for incomplete lines
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
+          // Accumulate data in buffer
+          buffer += decoder.decode(value, { stream: true });
 
-          for (const rawLine of chunk.split("\n")) {
-            const line = rawLine.trimEnd();
+          // Process complete lines (split by double newline for SSE events)
+          let nlIndex;
+          while ((nlIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, nlIndex).trimEnd();
+            buffer = buffer.slice(nlIndex + 1);
+
             if (!line || !line.startsWith("data:")) continue;
 
             const payload = line.slice(5).trim();
@@ -168,23 +173,12 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
               const json = JSON.parse(payload);
               const candidate = json?.candidates?.[0];
 
-              
               const delta = extractTextFromCandidate(candidate);
               if (delta) {
                 streamDelta(res, delta);
-              } else {
-                
-                const info = {
-                  info: "no_text_chunk",
-                  finishReason: candidate?.finishReason,
-                  promptFeedback: json?.promptFeedback,
-                  safety: candidate?.safetyRatings,
-                  error: json?.error,
-                };
-                res.write(`data: ${JSON.stringify(info)}\n\n`);
               }
-            } catch {
-              
+            } catch (e) {
+              // Ignore parse errors for incomplete JSON (will complete in next chunk)
             }
           }
         }
@@ -195,28 +189,24 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
 
       // ---------- Fallback: not SSE ----------
       const bodyText = await upstream.text().catch(() => "");
-
       
       const maybeLines = bodyText.split(/\r?\n/).filter(Boolean);
       let parsed;
       if (maybeLines.length > 1) {
-        
         const frames = [];
         for (const line of maybeLines) {
           try {
             frames.push(JSON.parse(line));
           } catch {
-            
+            // Ignore parse errors
           }
         }
         if (frames.length) parsed = frames;
       }
       if (!parsed) {
-        
         try {
           parsed = JSON.parse(bodyText);
         } catch {
-          
           res.write(`data: ${JSON.stringify({ info: "non_json_body", raw: bodyText })}\n\n`);
           endStream(res, heartbeat);
           return;
@@ -225,7 +215,6 @@ exports.tutorChat = functions.https.onRequest((req, res) => {
 
       let aggregated = "";
 
-      
       if (Array.isArray(parsed)) {
         for (const obj of parsed) {
           const cand = obj?.candidates?.[0];
