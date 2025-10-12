@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTutorStream } from "../hooks/useTutorStream";
 import { marked } from "marked";
-import { saveTurn } from "../lib/chatStore";
+import { saveTurn, updateTurn } from "../lib/chatStore";
 import { db } from "../firebase";
 import {
   collection, getDocs, orderBy, query, limit, deleteDoc, doc,
@@ -162,12 +162,24 @@ export default function TutorChat() {
       return;
     }
 
+    const finalMessages = [...historyMsgs, { role: "assistant", content: acc }];
+
     try {
-      const savedId = await saveTurn({
-        userId,
-        messages: [...historyMsgs, { role: "assistant", content: acc }],
-      });
-      setActiveId(savedId);
+      let conversationId;
+      if (activeId) {
+        // Update existing conversation
+        conversationId = await updateTurn({
+          conversationId: activeId,
+          messages: finalMessages,
+        });
+      } else {
+        // Create new conversation
+        conversationId = await saveTurn({
+          userId,
+          messages: finalMessages,
+        });
+        setActiveId(conversationId);
+      }
       loadHistory();
     } catch (err) {
       console.error("Falha ao salvar conversa no Firestore:", err);
@@ -183,6 +195,14 @@ export default function TutorChat() {
       handleSend(e);
     }
   };
+
+  // ========= new chat =========
+  function handleNewChat() {
+    setActiveId(null);
+    setMessages([]);
+    setStreamBuf("");
+    setInput("");
+  }
 
   // ========= delete conversation =========
   async function handleDeleteConversation(id) {
@@ -434,6 +454,22 @@ export default function TutorChat() {
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleNewChat}
+              title="Iniciar nova conversa"
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: C.accent,
+                color: "white",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              + Nova Conversa
+            </button>
+
             <button
               onClick={() => setDarkMode((v) => !v)}
               title={darkMode ? "Modo claro" : "Modo escuro"}
