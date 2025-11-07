@@ -1,18 +1,17 @@
-// web/src/components/TutorChat.jsx
+// web/src/components/SubjectChat.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTutorStream } from "../hooks/useTutorStream";
 import { marked } from "marked";
-import { saveTurn, updateTurn, updateConversationTitle } from "../lib/chatStore";
-import { generateConversationTitle } from "../lib/generateTitle";
 import { loadSettings, updateTheme } from "../lib/settingsStore";
-import { loadUserContext, buildTutorPrompt } from "../lib/tutorContext";
+import { loadSubjectContext, buildSubjectPrompt } from "../lib/tutorContext";
+import { createSubjectSession, loadSubjectHistory, updateSubjectSession } from "../lib/subjectChat";
 import { db } from "../firebase";
 import {
   collection, getDocs, orderBy, query, limit, deleteDoc, doc,
 } from "firebase/firestore";
 import { ArrowLeft, Plus, Sun, Moon, Clock, LogOut } from "lucide-react";
 
-export default function TutorChat({ user, onLogout, onBackToHub }) {
+export default function SubjectChat({ user, subject, onBack, onLogout }) {
   const { send, cancel, loading, error } = useTutorStream();
 
   // ========= chat state =========
@@ -27,7 +26,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [search, setSearch] = useState("");
 
-  // ========= theme (light/dark) =========
+  // ========= theme =========
   const C_LIGHT = {
     bg: "#f8fafc",
     panel: "#ffffff",
@@ -68,34 +67,32 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
   useEffect(() => {
     if (!settingsLoaded) return;
     
-    // Save to Firestore
     if (user) {
       updateTheme(user.uid, darkMode ? "dark" : "light");
     }
     
-    // também ajusta o background do body pra não piscar
     document.body.style.background = C.bg;
     document.body.style.color = C.text;
   }, [darkMode, settingsLoaded]); // eslint-disable-line
 
-  // Use authenticated user ID
   const userId = user?.uid;
 
   // ========= user context =========
   const [userContext, setUserContext] = useState(null);
   const [systemPrompt, setSystemPrompt] = useState("");
 
-  // Load user context
+  // Load subject-specific context
   useEffect(() => {
-    if (!user) return;
+    if (!user || !subject) return;
     
-    loadUserContext(user.uid).then((context) => {
+    loadSubjectContext(user.uid, subject).then((context) => {
       setUserContext(context);
       if (context) {
-        setSystemPrompt(buildTutorPrompt(context));
+        setSystemPrompt(buildSubjectPrompt(context));
+        console.log(`🎯 Loaded context for ${subject}:`, context);
       }
     });
-  }, [user]);
+  }, [user, subject]);
 
   // ========= refs =========
   const listRef = useRef(null);
@@ -116,40 +113,31 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
     ta.style.height = Math.min(220, ta.scrollHeight) + "px";
   }, [input]);
 
-  // ========= firestore (load history) =========
+  // ========= load history =========
   async function loadHistory() {
-    if (!userId) return;
+    if (!userId || !subject) return;
     
     try {
       setLoadingHistory(true);
-      // Load from user-specific chat history
-      const chatHistoryRef = collection(db, "users", userId, "chat_sessions");
-      const qy = query(
-        chatHistoryRef,
-        orderBy("createdAt", "desc"),
-        limit(50)
-      );
-      const snap = await getDocs(qy);
-      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setHistory(rows);
+      const sessions = await loadSubjectHistory(userId, subject);
+      setHistory(sessions);
     } catch (err) {
       console.error("Falha ao carregar histórico:", err);
     } finally {
       setLoadingHistory(false);
     }
   }
+  
   useEffect(() => { 
-    if (userId) loadHistory(); 
-  }, [userId]); // eslint-disable-line
+    if (userId && subject) loadHistory(); 
+  }, [userId, subject]); // eslint-disable-line
 
   // ========= helpers =========
   function titleFromConversation(conversation) {
-    // Use stored title if available
     if (conversation.title) {
       return conversation.title;
     }
     
-    // Fallback to first user message
     const msgs = conversation.messages;
     if (!Array.isArray(msgs) || !msgs.length) return "Nova Conversa";
     const firstUser = msgs.find((m) => m.role === "user");
@@ -198,7 +186,6 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
       console.error("Erro enviando para o tutor:", err);
       streamError = err;
       
-      // Show error message in chat
       const errorMsg = {
         role: "assistant",
         content: `❌ **Erro ao conectar com o tutor**\n\nNão foi possível obter uma resposta no momento. Por favor, tente novamente.\n\n_Detalhes: ${err.message || "Erro desconhecido"}_`,
@@ -208,7 +195,6 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
       return;
     }
 
-    // Handle empty responses
     if (!acc || acc.trim() === "") {
       const errorMsg = {
         role: "assistant",
@@ -223,37 +209,17 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
 
     try {
       let conversationId;
-      const isFirstExchange = finalMessages.length === 2; // First user msg + first assistant reply
       
       if (activeId) {
-        // Update existing conversation
-        conversationId = await updateTurn({
-          userId,
-          conversationId: activeId,
-          messages: finalMessages,
-        });
+        await updateSubjectSession(userId, subject, activeId, finalMessages);
+        conversationId = activeId;
       } else {
-        // Create new conversation
-        conversationId = await saveTurn({
-          userId,
-          messages: finalMessages,
-        });
+        conversationId = await createSubjectSession(userId, subject);
+        await updateSubjectSession(userId, subject, conversationId, finalMessages);
         setActiveId(conversationId);
       }
       
       loadHistory();
-
-      // Generate title for first exchange (async, don't block UI)
-      if (isFirstExchange && conversationId) {
-        const endpoint = import.meta.env.VITE_TUTOR_ENDPOINT;
-        generateConversationTitle({ endpoint, messages: finalMessages })
-          .then(title => {
-            updateConversationTitle({ userId, conversationId, title })
-              .then(() => loadHistory())
-              .catch(err => console.error("Failed to update title:", err));
-          })
-          .catch(err => console.error("Failed to generate title:", err));
-      }
     } catch (err) {
       console.error("Falha ao salvar conversa no Firestore:", err);
     }
@@ -282,7 +248,8 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
     if (!userId) return;
     
     try {
-      await deleteDoc(doc(db, "users", userId, "chat_sessions", id));
+      const subjectSlug = subject.toLowerCase().replace(/\s+/g, "_");
+      await deleteDoc(doc(db, "users", userId, "chats", subjectSlug, "sessions", id));
       setHistory((prev) => prev.filter((c) => c.id !== id));
       if (activeId === id) {
         setActiveId(null);
@@ -295,7 +262,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
     }
   }
 
-  // ========= layout (fullscreen) =========
+  // ========= layout =========
   const layout = {
     position: "fixed",
     inset: 0,
@@ -371,7 +338,6 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
     textAlign: "left",
   });
 
-  // variações por tema
   const disabledSendBg = darkMode ? "#3f3f46" : "#e5e7eb";
   const disabledSendText = darkMode ? "#a1a1aa" : "#9ca3af";
   const deleteStyles = darkMode
@@ -402,7 +368,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
                 padding: "6px 10px",
                 borderRadius: 8,
                 border: `1px solid ${C.border}`,
-                background: C.panel2,   // tema
+                background: C.panel2,
                 color: C.text,
                 cursor: "pointer",
               }}
@@ -426,16 +392,14 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
             }}
           />
 
-          <div
-            style={{
-              overflowY: "auto",
-              display: "grid",
-              gap: 8,
-              paddingRight: 4,
-              gridAutoRows: "max-content",
-              alignContent: "start",
-            }}
-          >
+          <div style={{
+            overflowY: "auto",
+            display: "grid",
+            gap: 8,
+            paddingRight: 4,
+            gridAutoRows: "max-content",
+            alignContent: "start",
+          }}>
             {filteredHistory.length ? (
               filteredHistory.map((h) => {
                 const title = titleFromConversation(h);
@@ -509,35 +473,32 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
       <section style={chatColumn}>
         <div style={header}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: "50%",
-                background: C.accent,
-                display: "grid",
-                placeItems: "center",
-                color: "white",
-                fontWeight: 700,
-              }}
-            >
-              T
+            <div style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              background: C.accent,
+              display: "grid",
+              placeItems: "center",
+              color: "white",
+              fontWeight: 700,
+              fontSize: 18,
+            }}>
+              {subject[0]}
             </div>
             <div>
-              <div style={{ fontWeight: 700 }}>Tutor</div>
+              <div style={{ fontWeight: 700 }}>{subject}</div>
               <div style={{ fontSize: 12, opacity: 0.7 }}>
-                {localStorage.getItem("tutor-objective") 
-                  ? `Objetivo: ${localStorage.getItem("tutor-objective")}`
-                  : "Seu assistente de estudos"}
+                Tutor especializado
               </div>
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
-            {onBackToHub && (
+            {onBack && (
               <button
-                onClick={onBackToHub}
-                title="Voltar ao Hub"
+                onClick={onBack}
+                title="Voltar"
                 style={{
                   padding: "8px 12px",
                   borderRadius: 10,
@@ -552,7 +513,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
                 }}
               >
                 <ArrowLeft size={16} />
-                Hub
+                Voltar
               </button>
             )}
             
@@ -609,7 +570,6 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
               }}
             >
               <Clock size={16} />
-              {showSidebar ? "" : ""}
             </button>
 
             <button
@@ -639,7 +599,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
               <div key={i} style={row(isUser)}>
                 <div style={bubble(isUser)}>
                   <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6, userSelect: "none" }}>
-                    {isUser ? "Você" : "Tutor-AI"}
+                    {isUser ? "Você" : `Tutor de ${subject}`}
                   </div>
                   {m.role === "assistant" ? (
                     <div dangerouslySetInnerHTML={{ __html: marked.parse(m.content) }} />
@@ -655,7 +615,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
             <div style={row(false)}>
               <div style={bubble(false)}>
                 <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6, userSelect: "none" }}>
-                  Tutor-AI está digitando…
+                  Tutor está digitando…
                 </div>
                 <div dangerouslySetInnerHTML={{ __html: marked.parse(streamBuf || "…") }} />
               </div>
@@ -669,7 +629,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Pergunte algo… (Enter para enviar, Shift+Enter para nova linha)"
+            placeholder="Pergunte algo… (Enter para enviar)"
             rows={1}
             style={{
               flex: 1,
@@ -678,7 +638,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
               padding: 12,
               borderRadius: 10,
               border: "1px solid " + C.border,
-              background: C.panel2, // tema
+              background: C.panel2,
               color: C.text,
               lineHeight: 1.45,
             }}
@@ -691,7 +651,7 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
                 padding: "10px 14px",
                 borderRadius: 10,
                 border: `1px solid ${C.border}`,
-                background: C.panel2, // tema
+                background: C.panel2,
                 color: C.text,
                 cursor: "pointer",
               }}
@@ -718,16 +678,14 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
         </form>
 
         {error && (
-          <pre
-            style={{
-              color: darkMode ? "#fca5a5" : "crimson",
-              whiteSpace: "pre-wrap",
-              background: C.panel2,
-              padding: 10,
-              borderRadius: 8,
-              border: `1px solid ${C.border}`,
-            }}
-          >
+          <pre style={{
+            color: darkMode ? "#fca5a5" : "crimson",
+            whiteSpace: "pre-wrap",
+            background: C.panel2,
+            padding: 10,
+            borderRadius: 8,
+            border: `1px solid ${C.border}`,
+          }}>
             {error}
           </pre>
         )}
@@ -735,3 +693,4 @@ export default function TutorChat({ user, onLogout, onBackToHub }) {
     </div>
   );
 }
+
