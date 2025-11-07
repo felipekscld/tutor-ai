@@ -1,65 +1,186 @@
 // web/src/App.jsx
 import * as React from "react";
-import { db, auth } from "./firebase";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
-import { collection, getDocs } from "firebase/firestore";
+import { db, auth, googleProvider } from "./firebase";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { generateGoals } from "./lib/goalsEngine";
 
-import TutorChat from "./components/TutorChat";
+import LoginScreen from "./components/LoginScreen";
 import WelcomeScreen from "./components/WelcomeScreen";
+import Hub from "./components/Hub";
+import TutorChat from "./components/TutorChat";
+import SubjectChatSelector from "./components/SubjectChatSelector";
+import SubjectChat from "./components/SubjectChat";
 
 export default function App() {
-  const [hasObjective, setHasObjective] = React.useState(
-    () => localStorage.getItem("tutor-hasObjective") === "true"
-  );
+  const [user, setUser] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [hasProfile, setHasProfile] = React.useState(false);
+  const [showTutorAI, setShowTutorAI] = React.useState(false);
+  const [showSubjectChats, setShowSubjectChats] = React.useState(false);
+  const [selectedSubject, setSelectedSubject] = React.useState(null);
 
+  // Monitor auth state
   React.useEffect(() => {
-    (async () => {
-      const email = "demo@uni.com";
-      const pass = "123456";
-      try {
-        await signInWithEmailAndPassword(auth, email, pass);
-      } catch (e) {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      
+      if (currentUser) {
+        // Create user document if doesn't exist
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const userSnap = await getDoc(userDocRef);
         
-        if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential") {
-          await createUserWithEmailAndPassword(auth, email, pass);
-          await signInWithEmailAndPassword(auth, email, pass);
+        if (!userSnap.exists()) {
+          await setDoc(userDocRef, {
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            photoURL: currentUser.photoURL,
+            createdAt: serverTimestamp(),
+            last_active: serverTimestamp(),
+          });
+          console.log("✓ Created user document:", currentUser.uid);
         } else {
-          console.error("auth error:", e);
-          return;
+          // Update last_active on every login
+          await setDoc(userDocRef, {
+            last_active: serverTimestamp(),
+          }, { merge: true });
+          console.log("✓ Updated last_active:", currentUser.uid);
         }
+        
+        // Check if profile exists
+        const profileRef = doc(db, "users", currentUser.uid, "profile", "default");
+        const profileSnap = await getDoc(profileRef);
+        setHasProfile(profileSnap.exists());
+      } else {
+        setHasProfile(false);
       }
-      const snap = await getDocs(collection(db, "test"));
-      console.log("signed in and read Firestore:", snap.size, "docs");
-    })();
+      
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  // Demo reset shortcut (Ctrl+Shift+R)
-  React.useEffect(() => {
-    const handleKey = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'R') {
-        localStorage.removeItem("tutor-objective");
-        localStorage.removeItem("tutor-timeframe");
-        localStorage.removeItem("tutor-hasObjective");
-        setHasObjective(false);
-      }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, []);
-
-  const handleOnboardingComplete = ({ objective, timeframe }) => {
-    localStorage.setItem("tutor-objective", objective);
-    localStorage.setItem("tutor-timeframe", timeframe);
-    localStorage.setItem("tutor-hasObjective", "true");
-    setHasObjective(true);
+  // Google login
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Erro ao fazer login. Tente novamente.");
+    }
   };
 
-  return hasObjective ? (
-    <TutorChat />
-  ) : (
-    <WelcomeScreen onComplete={handleOnboardingComplete} />
+  // Logout
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
+  // Onboarding complete
+  const handleOnboardingComplete = async (profileData) => {
+    if (!user) return;
+    
+    try {
+      const profileRef = doc(db, "users", user.uid, "profile", "default");
+      await setDoc(profileRef, {
+        ...profileData,
+        createdAt: serverTimestamp(),
+      });
+      console.log("✓ Profile created");
+      
+      // Generate goals based on profile
+      await generateGoals(user.uid, profileData);
+      console.log("✓ Goals generated");
+      
+      setHasProfile(true);
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      alert("Erro ao salvar perfil. Tente novamente.");
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div style={{
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#18181b",
+        color: "#f4f4f5",
+        fontFamily: "Inter, sans-serif",
+      }}>
+        Carregando...
+      </div>
+    );
+  }
+
+  // Not authenticated
+  if (!user) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  // No profile yet
+  if (!hasProfile) {
+    return <WelcomeScreen onComplete={handleOnboardingComplete} user={user} onLogout={handleLogout} />;
+  }
+
+  // Authenticated with profile - Navigation logic
+  
+  // Subject-specific chat
+  if (selectedSubject) {
+    return (
+      <SubjectChat
+        user={user}
+        subject={selectedSubject}
+        onBack={() => {
+          setSelectedSubject(null);
+          setShowSubjectChats(true);
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
+  
+  // Subject chat selector
+  if (showSubjectChats) {
+    return (
+      <SubjectChatSelector
+        user={user}
+        onSelectSubject={(subject) => {
+          setSelectedSubject(subject);
+          setShowSubjectChats(false);
+        }}
+        onBack={() => setShowSubjectChats(false)}
+        onLogout={handleLogout}
+      />
+    );
+  }
+  
+  // General tutor AI
+  if (showTutorAI) {
+    return (
+      <TutorChat 
+        user={user} 
+        onLogout={handleLogout}
+        onBackToHub={() => setShowTutorAI(false)}
+      />
+    );
+  }
+  
+  // Main Hub
+  return (
+    <Hub 
+      user={user} 
+      onLogout={handleLogout}
+      onOpenTutorAI={() => setShowTutorAI(true)}
+      onOpenSubjectChats={() => setShowSubjectChats(true)}
+    />
   );
 }

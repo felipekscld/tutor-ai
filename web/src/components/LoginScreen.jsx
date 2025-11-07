@@ -1,0 +1,137 @@
+// web/src/components/LoginScreen.jsx
+import { useState, useEffect } from "react";
+
+export default function LoginScreen({ onLogin }) {
+  // Theme state
+  const C_LIGHT = {
+    bg: "#f8fafc",
+    panel: "#ffffff",
+    border: "#d1d5db",
+    text: "#111827",
+    accent: "#2563eb",
+    textSecondary: "#64748b",
+  };
+  const C_DARK = {
+    bg: "#18181b",
+    panel: "#27272a",
+    border: "#3f3f46",
+    text: "#f4f4f5",
+    accent: "#3b82f6",
+    textSecondary: "#a1a1aa",
+  };
+
+  const [darkMode, setDarkMode] = useState(() => {
+    const v = localStorage.getItem("tutor-darkmode");
+    return v ? v === "1" : false;
+  });
+  const C = darkMode ? C_DARK : C_LIGHT;
+
+  useEffect(() => {
+    localStorage.setItem("tutor-darkmode", darkMode ? "1" : "0");
+    document.body.style.background = C.bg;
+    document.body.style.color = C.text;
+  }, [darkMode]); // eslint-disable-line
+
+  const layout = {
+    position: "fixed",
+    inset: 0,
+    width: "100vw",
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    background: C.bg,
+    color: C.text,
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+    padding: 24,
+  };
+
+  const titleStyle = {
+    fontSize: 48,
+    fontWeight: 700,
+    color: C.accent,
+    marginBottom: 12,
+    textAlign: "center",
+  };
+
+  const subtitleStyle = {
+    fontSize: 20,
+    color: C.textSecondary,
+    marginBottom: 48,
+    textAlign: "center",
+  };
+
+  const buttonStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "16px 32px",
+    borderRadius: 12,
+    border: `1px solid ${C.border}`,
+    background: C.panel,
+    color: C.text,
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    boxShadow: darkMode 
+      ? "0 4px 20px rgba(0,0,0,0.3)" 
+      : "0 4px 20px rgba(0,0,0,0.1)",
+  };
+
+  const themeToggleStyle = {
+    position: "fixed",
+    bottom: 24,
+    right: 24,
+    padding: "10px 16px",
+    borderRadius: 10,
+    border: `1px solid ${C.border}`,
+    background: C.panel,
+    color: C.text,
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 500,
+  };
+
+  return (
+    <div style={layout}>
+      <h1 style={titleStyle}>Tutor-IA</h1>
+      <p style={subtitleStyle}>Seu hub de estudos inteligente</p>
+
+      <button
+        onClick={onLogin}
+        style={buttonStyle}
+        onMouseEnter={(e) => {
+          e.target.style.transform = "translateY(-2px)";
+          e.target.style.boxShadow = darkMode
+            ? "0 8px 30px rgba(0,0,0,0.4)"
+            : "0 8px 30px rgba(37, 99, 235, 0.2)";
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = "translateY(0)";
+          e.target.style.boxShadow = darkMode
+            ? "0 4px 20px rgba(0,0,0,0.3)"
+            : "0 4px 20px rgba(0,0,0,0.1)";
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Entrar com Google
+      </button>
+
+      <button
+        onClick={() => setDarkMode((v) => !v)}
+        style={themeToggleStyle}
+        title={darkMode ? "Modo claro" : "Modo escuro"}
+      >
+        {darkMode ? "☀️ Claro" : "🌙 Escuro"}
+      </button>
+    </div>
+  );
+}
+
