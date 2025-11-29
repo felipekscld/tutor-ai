@@ -1,6 +1,9 @@
 // web/src/lib/tutorContext.js
 import { db } from "../firebase";
 import { doc, getDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { getRelevantMemories, formatMemoryContextForPrompt } from "./chatMemory";
+import { getDifficultyContextForAI, getRecentDifficultTopics } from "./feedbackStore";
+import { getQuizStats } from "./quizEngine";
 
 /**
  * Load user context for Tutor AI
@@ -67,6 +70,7 @@ function formatDate(date) {
 
 /**
  * Load context specific for a subject
+ * Now includes chat memories and difficulty feedback
  */
 export async function loadSubjectContext(uid, subject, topic = null, date = new Date()) {
   try {
@@ -111,6 +115,39 @@ export async function loadSubjectContext(uid, subject, topic = null, date = new 
     const doneTasks = recentActivity.filter(a => a.status === "done");
     const totalMinutes = doneTasks.reduce((sum, a) => sum + (a.duration_minutes || 0), 0);
     
+    // Load chat memories for this subject
+    let memories = [];
+    try {
+      memories = await getRelevantMemories(uid, subject, topic, 5);
+    } catch (e) {
+      console.warn("Could not load chat memories:", e);
+    }
+    
+    // Load difficulty feedback
+    let difficultyContext = null;
+    try {
+      difficultyContext = await getDifficultyContextForAI(uid, subject);
+    } catch (e) {
+      console.warn("Could not load difficulty context:", e);
+    }
+    
+    // Load quiz stats for this subject
+    let quizStats = null;
+    try {
+      const allQuizStats = await getQuizStats(uid, "all");
+      if (allQuizStats.bySubject[subject]) {
+        quizStats = {
+          total_questions: allQuizStats.bySubject[subject].total,
+          correct_answers: allQuizStats.bySubject[subject].correct,
+          accuracy: allQuizStats.bySubject[subject].total > 0
+            ? Math.round((allQuizStats.bySubject[subject].correct / allQuizStats.bySubject[subject].total) * 100)
+            : 0,
+        };
+      }
+    } catch (e) {
+      console.warn("Could not load quiz stats:", e);
+    }
+    
     const context = {
       subject: subject,
       topic: topic,
@@ -132,7 +169,16 @@ export async function loadSubjectContext(uid, subject, topic = null, date = new 
         failed_sessions: failedTasks.length,
         success_rate: doneTasks.length > 0 ? ((doneTasks.length / (doneTasks.length + failedTasks.length)) * 100).toFixed(1) : 0,
       },
+      quiz_performance: quizStats,
       difficult_topics: [...new Set(failedTasks.map(f => f.topic).filter(Boolean))],
+      difficulty_feedback: difficultyContext,
+      chat_memories: memories.length > 0 ? {
+        sessions_count: memories.length,
+        key_points: memories.flatMap(m => m.key_points || []).slice(0, 5),
+        known_difficulties: memories.flatMap(m => m.difficulties_mentioned || []).slice(0, 5),
+        concepts_already_explained: memories.flatMap(m => m.concepts_explained || []).slice(0, 10),
+        learning_preferences: memories.flatMap(m => m.student_preferences || []).slice(0, 3),
+      } : null,
     };
     
     return context;
@@ -173,9 +219,10 @@ ${JSON.stringify(context, null, 2)}
 
 /**
  * Build specialized system prompt for a subject
+ * Now includes chat memories and difficulty feedback
  */
 export function buildSubjectPrompt(context) {
-  const { subject, recent_performance, difficult_topics } = context;
+  const { subject, recent_performance, difficult_topics, chat_memories, difficulty_feedback, quiz_performance } = context;
   
   const subjectPrompts = {
     "Matemática": `Você é um tutor especializado em Matemática. Use raciocínio lógico e explicações passo-a-passo.
@@ -196,21 +243,65 @@ Foque em: ciclos naturais, relações ecológicas, e processos fisiológicos.`,
   
   const specialization = subjectPrompts[subject] || `Você é um tutor especializado em ${subject}.`;
   
+  // Build memory section
+  let memorySection = "";
+  if (chat_memories) {
+    memorySection = `
+
+MEMÓRIA DE CONVERSAS ANTERIORES:
+- Sessões anteriores: ${chat_memories.sessions_count}
+${chat_memories.known_difficulties?.length > 0 ? `- Dificuldades já mencionadas: ${chat_memories.known_difficulties.join(", ")}` : ""}
+${chat_memories.concepts_already_explained?.length > 0 ? `- Conceitos já explicados: ${chat_memories.concepts_already_explained.join(", ")}` : ""}
+${chat_memories.learning_preferences?.length > 0 ? `- Preferências de aprendizado: ${chat_memories.learning_preferences.join(", ")}` : ""}
+${chat_memories.key_points?.length > 0 ? `- Pontos importantes anteriores: ${chat_memories.key_points.join(", ")}` : ""}
+
+IMPORTANTE: Use esta memória para personalizar suas respostas. Não repita explicações de conceitos já explicados, a menos que o aluno peça revisão. Se houver dificuldades conhecidas, seja mais detalhado nesses pontos.`;
+  }
+  
+  // Build difficulty feedback section
+  let difficultySection = "";
+  if (difficulty_feedback && difficulty_feedback.difficult_topics?.length > 0) {
+    difficultySection = `
+
+FEEDBACK DE DIFICULDADE DO ALUNO:
+${difficulty_feedback.difficult_topics.map(t => 
+  `- ${t.topic}: reportado ${t.times_reported}x como difícil. Motivos: ${t.main_reasons?.join(", ") || "não especificado"}`
+).join("\n")}
+
+AÇÃO: Para estes tópicos, comece com explicações mais básicas e avance gradualmente. Pergunte se o aluno quer revisar os fundamentos.`;
+  }
+  
+  // Build quiz performance section
+  let quizSection = "";
+  if (quiz_performance) {
+    quizSection = `
+
+DESEMPENHO EM QUIZZES:
+- Questões respondidas: ${quiz_performance.total_questions}
+- Acertos: ${quiz_performance.correct_answers} (${quiz_performance.accuracy}%)
+
+${quiz_performance.accuracy < 50 ? "ATENÇÃO: Baixo desempenho nos quizzes. Reforce conceitos básicos antes de avançar." : 
+  quiz_performance.accuracy >= 80 ? "Ótimo desempenho! Pode desafiar com questões mais complexas." : ""}`;
+  }
+  
   const prompt = `${specialization}
 
 PERFORMANCE DO ESTUDANTE EM ${subject.toUpperCase()}:
 - Total de minutos estudados: ${recent_performance?.total_minutes || 0} min
 - Sessões realizadas: ${recent_performance?.total_sessions || 0}
 - Taxa de sucesso: ${recent_performance?.success_rate || 0}%
-${difficult_topics?.length > 0 ? `- Tópicos com dificuldade: ${difficult_topics.join(", ")}` : ""}
+${difficult_topics?.length > 0 ? `- Tópicos com dificuldade (por tarefas): ${difficult_topics.join(", ")}` : ""}
+${memorySection}${difficultySection}${quizSection}
 
 INSTRUÇÕES:
 - Sempre responda em português brasileiro (PT-BR)
 - Seja didático e use exemplos específicos de ${subject}
 - Identifique gaps conceituais e sugira exercícios progressivos
 - Adapte explicações ao nível de dificuldade demonstrado
-- Foque nos tópicos com mais erros recentes
+- Use a memória de conversas para não repetir explicações
+- Se o aluno teve dificuldades reportadas, seja mais paciente e detalhado
 - Proponha estratégias de estudo específicas para ${subject}
+- Quando apropriado, sugira fazer um quiz para testar o conhecimento
 
 CONTEXTO COMPLETO:
 ${JSON.stringify(context, null, 2)}

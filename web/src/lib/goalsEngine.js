@@ -37,12 +37,22 @@ export async function generateGoals(uid, profile) {
       const studyDays = [];
       
       // Study this topic every 2-3 days depending on priority
+      // But ensure at least 3 days per week for each topic
       const frequency = weight >= 2 ? 2 : 3; // High priority = every 2 days, normal = every 3 days
       
       for (let i = 0; i < 7; i++) {
-        if ((i - startDay) % frequency === 0) {
+        if ((i - startDay + 7) % frequency === 0) { // Added +7 to avoid negative modulo issues
           studyDays.push(daysOfWeek[(startDay + i) % 7]);
         }
+      }
+      
+      // Ensure at least some days are included
+      if (studyDays.length === 0) {
+        // Fallback: add today and alternating days
+        const today = new Date().getDay();
+        studyDays.push(daysOfWeek[today]);
+        studyDays.push(daysOfWeek[(today + 2) % 7]);
+        studyDays.push(daysOfWeek[(today + 4) % 7]);
       }
       
       const goalId = `${subject.subject}_${topic}`.replace(/\s+/g, "_").toLowerCase();

@@ -2,6 +2,12 @@
 import { db } from "../firebase";
 import { collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, serverTimestamp, where, deleteDoc } from "firebase/firestore";
 import { updateLastActive } from "./userActivity";
+import { 
+  generateSummaryPrompt, 
+  parseSummaryResponse, 
+  saveConversationSummary, 
+  shouldGenerateMemory 
+} from "./chatMemory";
 
 /**
  * Create a new subject-specific chat session
@@ -101,6 +107,80 @@ export async function deleteSubjectSession(uid, subject, sessionId) {
   } catch (error) {
     console.error(`Error deleting ${subject} session:`, error);
     throw error;
+  }
+}
+
+/**
+ * Finalize a session and save memory if substantial
+ * Call this when user leaves the chat
+ */
+export async function finalizeSession(uid, subject, topic, messages) {
+  // Check if session has enough substance to save
+  if (!shouldGenerateMemory(messages)) {
+    console.log("Session too short to generate memory");
+    return null;
+  }
+  
+  try {
+    // Generate summary prompt
+    const prompt = generateSummaryPrompt(messages, subject, topic);
+    
+    // Call AI to summarize
+    const endpoint = import.meta.env.VITE_TUTOR_ENDPOINT || "http://localhost:5001/tutor-ia-8a2fa/us-central1/tutorChat";
+    
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: prompt }],
+        context: { type: "memory_generation" },
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error("Failed to generate memory");
+    }
+    
+    // Handle SSE response
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = "";
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = decoder.decode(value);
+      const lines = chunk.split("\n");
+      
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6);
+          if (data === "[DONE]") continue;
+          
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.delta) {
+              fullResponse += parsed.delta;
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+    }
+    
+    // Parse the summary
+    const summary = parseSummaryResponse(fullResponse);
+    
+    // Save to Firestore
+    const memory = await saveConversationSummary(uid, subject, topic, summary, messages.length);
+    
+    console.log("✓ Chat memory saved:", memory);
+    return memory;
+  } catch (error) {
+    console.error("Error finalizing session:", error);
+    return null;
   }
 }
 

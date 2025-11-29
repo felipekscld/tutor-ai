@@ -203,3 +203,43 @@ export async function getActivityLogForSubject(uid, subject, limit = 50) {
   }
 }
 
+/**
+ * Get activity data for heatmap (last 365 days)
+ * Returns: { "2025-01-15": { minutes: 45, tasks: 3 }, ... }
+ */
+export async function getActivityHeatmapData(uid) {
+  const activityRef = collection(db, "users", uid, "activity_log");
+  
+  // Get all task_update logs with status "done"
+  const q = query(
+    activityRef,
+    where("type", "==", "task_update"),
+    where("status", "==", "done")
+  );
+  
+  try {
+    const snap = await getDocs(q);
+    
+    const heatmapData = {};
+    
+    snap.docs.forEach(doc => {
+      const data = doc.data();
+      const dateStr = data.date;
+      
+      if (!dateStr) return;
+      
+      if (!heatmapData[dateStr]) {
+        heatmapData[dateStr] = { minutes: 0, tasks: 0 };
+      }
+      
+      heatmapData[dateStr].minutes += data.duration_minutes || 0;
+      heatmapData[dateStr].tasks += 1;
+    });
+    
+    return heatmapData;
+  } catch (error) {
+    console.error("Error getting heatmap data:", error);
+    return {};
+  }
+}
+

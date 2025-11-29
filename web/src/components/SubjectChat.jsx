@@ -4,20 +4,21 @@ import { useTutorStream } from "../hooks/useTutorStream";
 import { marked } from "marked";
 import { loadSettings, updateTheme } from "../lib/settingsStore";
 import { loadSubjectContext, buildSubjectPrompt } from "../lib/tutorContext";
-import { createSubjectSession, loadSubjectHistory, updateSubjectSession } from "../lib/subjectChat";
+import { createSubjectSession, loadSubjectHistory, updateSubjectSession, finalizeSession } from "../lib/subjectChat";
 import { db } from "../firebase";
 import {
   collection, getDocs, orderBy, query, limit, deleteDoc, doc,
 } from "firebase/firestore";
 import { ArrowLeft, Plus, Sun, Moon, Clock, LogOut } from "lucide-react";
 
-export default function SubjectChat({ user, subject, onBack, onLogout }) {
+export default function SubjectChat({ user, subject, initialContext, onBack, onLogout }) {
   const { send, cancel, loading, error } = useTutorStream();
 
   // ========= chat state =========
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [streamBuf, setStreamBuf] = useState("");
+  const [initialContextHandled, setInitialContextHandled] = useState(false);
 
   // ========= sidebar =========
   const [showSidebar, setShowSidebar] = useState(true);
@@ -93,6 +94,45 @@ export default function SubjectChat({ user, subject, onBack, onLogout }) {
       }
     });
   }, [user, subject]);
+
+  // Handle initial context (e.g., start with questions for a topic)
+  useEffect(() => {
+    if (!systemPrompt || !initialContext || initialContextHandled || loading) return;
+    
+    if (initialContext.action === "questions" && initialContext.topic) {
+      setInitialContextHandled(true);
+      
+      // Create initial message asking for questions
+      const initialMessage = `Gere 3 questões de múltipla escolha sobre "${initialContext.topic}" para eu praticar. Depois de eu responder cada uma, me diga se acertei e explique a resposta correta.`;
+      
+      // Simulate sending this message
+      const userMsg = { role: "user", content: initialMessage };
+      setMessages([userMsg]);
+      
+      // Send to AI
+      let acc = "";
+      send({
+        systemPrompt,
+        messages: [userMsg],
+        onDelta: (t) => {
+          acc += t;
+          setStreamBuf((s) => s + t);
+        },
+      }).then(() => {
+        if (acc) {
+          setMessages([userMsg, { role: "assistant", content: acc }]);
+        }
+        setStreamBuf("");
+      }).catch((err) => {
+        console.error("Error with initial context:", err);
+        setMessages([userMsg, { 
+          role: "assistant", 
+          content: `❌ Erro ao gerar questões. Por favor, tente novamente ou faça uma pergunta.` 
+        }]);
+        setStreamBuf("");
+      });
+    }
+  }, [systemPrompt, initialContext, initialContextHandled, loading, send]);
 
   // ========= refs =========
   const listRef = useRef(null);
@@ -260,6 +300,21 @@ export default function SubjectChat({ user, subject, onBack, onLogout }) {
       console.error("Erro ao deletar conversa:", err);
       alert("Não foi possível deletar a conversa.");
     }
+  }
+
+  // ========= handle back with memory save =========
+  async function handleBack() {
+    // Save chat memory if there are substantial messages
+    if (userId && subject && messages.length >= 5) {
+      try {
+        const topic = initialContext?.topic || null;
+        await finalizeSession(userId, subject, topic, messages);
+      } catch (error) {
+        console.error("Error saving chat memory:", error);
+      }
+    }
+    
+    onBack?.();
   }
 
   // ========= layout =========
@@ -497,7 +552,7 @@ export default function SubjectChat({ user, subject, onBack, onLogout }) {
           <div style={{ display: "flex", gap: 8 }}>
             {onBack && (
               <button
-                onClick={onBack}
+                onClick={handleBack}
                 title="Voltar"
                 style={{
                   padding: "8px 12px",

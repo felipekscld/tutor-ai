@@ -4,6 +4,7 @@ import { db, auth, googleProvider } from "./firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { generateGoals } from "./lib/goalsEngine";
+import { checkInactivityAndReplan } from "./lib/replanEngine";
 
 import LoginScreen from "./components/LoginScreen";
 import WelcomeScreen from "./components/WelcomeScreen";
@@ -11,6 +12,10 @@ import Hub from "./components/Hub";
 import TutorChat from "./components/TutorChat";
 import SubjectChatSelector from "./components/SubjectChatSelector";
 import SubjectChat from "./components/SubjectChat";
+import FixedCommitments from "./components/FixedCommitments";
+import ScheduleView from "./components/ScheduleView";
+import EditPlan from "./components/EditPlan";
+import QuizMode from "./components/QuizMode";
 
 export default function App() {
   const [user, setUser] = React.useState(null);
@@ -19,6 +24,15 @@ export default function App() {
   const [showTutorAI, setShowTutorAI] = React.useState(false);
   const [showSubjectChats, setShowSubjectChats] = React.useState(false);
   const [selectedSubject, setSelectedSubject] = React.useState(null);
+  const [showCommitments, setShowCommitments] = React.useState(false);
+  const [showSchedule, setShowSchedule] = React.useState(false);
+  const [showEditPlan, setShowEditPlan] = React.useState(false);
+  const [showQuiz, setShowQuiz] = React.useState(false);
+  const [quizSubject, setQuizSubject] = React.useState(null);
+  const [quizTopic, setQuizTopic] = React.useState(null);
+  const [quizTaskType, setQuizTaskType] = React.useState("theory");
+  const [replanMessage, setReplanMessage] = React.useState(null);
+  const [initialChatContext, setInitialChatContext] = React.useState(null);
 
   // Monitor auth state
   React.useEffect(() => {
@@ -50,9 +64,23 @@ export default function App() {
         // Check if profile exists
         const profileRef = doc(db, "users", currentUser.uid, "profile", "default");
         const profileSnap = await getDoc(profileRef);
-        setHasProfile(profileSnap.exists());
+        const profileExists = profileSnap.exists();
+        setHasProfile(profileExists);
+        
+        // Check for inactivity and replan if needed
+        if (profileExists) {
+          try {
+            const replanResult = await checkInactivityAndReplan(currentUser.uid);
+            if (replanResult.needsReplan && replanResult.message) {
+              setReplanMessage(replanResult.message);
+            }
+          } catch (error) {
+            console.error("Error checking inactivity:", error);
+          }
+        }
       } else {
         setHasProfile(false);
+        setReplanMessage(null);
       }
       
       setLoading(false);
@@ -133,14 +161,37 @@ export default function App() {
 
   // Authenticated with profile - Navigation logic
   
+  // Quiz Mode
+  if (showQuiz && quizSubject && quizTopic) {
+    return (
+      <QuizMode
+        user={user}
+        subject={quizSubject}
+        topic={quizTopic}
+        taskType={quizTaskType}
+        onBack={() => {
+          setShowQuiz(false);
+          setQuizSubject(null);
+          setQuizTopic(null);
+          setQuizTaskType("theory");
+        }}
+        onComplete={(summary) => {
+          console.log("Quiz complete:", summary);
+        }}
+      />
+    );
+  }
+  
   // Subject-specific chat
   if (selectedSubject) {
     return (
       <SubjectChat
         user={user}
         subject={selectedSubject}
+        initialContext={initialChatContext}
         onBack={() => {
           setSelectedSubject(null);
+          setInitialChatContext(null);
           setShowSubjectChats(true);
         }}
         onLogout={handleLogout}
@@ -163,6 +214,40 @@ export default function App() {
     );
   }
   
+  // Edit Plan
+  if (showEditPlan) {
+    return (
+      <EditPlan
+        user={user}
+        onBack={() => setShowEditPlan(false)}
+        onSave={() => {
+          setShowEditPlan(false);
+          window.location.reload();
+        }}
+      />
+    );
+  }
+  
+  // Schedule View
+  if (showSchedule) {
+    return (
+      <ScheduleView
+        user={user}
+        onBack={() => setShowSchedule(false)}
+      />
+    );
+  }
+  
+  // Fixed Commitments
+  if (showCommitments) {
+    return (
+      <FixedCommitments
+        user={user}
+        onBack={() => setShowCommitments(false)}
+      />
+    );
+  }
+  
   // General tutor AI
   if (showTutorAI) {
     return (
@@ -181,6 +266,21 @@ export default function App() {
       onLogout={handleLogout}
       onOpenTutorAI={() => setShowTutorAI(true)}
       onOpenSubjectChats={() => setShowSubjectChats(true)}
+      onOpenCommitments={() => setShowCommitments(true)}
+      onOpenSchedule={() => setShowSchedule(true)}
+      onOpenEditPlan={() => setShowEditPlan(true)}
+      onStartTask={(subject, topic) => {
+        setInitialChatContext({ topic, action: "questions" });
+        setSelectedSubject(subject);
+      }}
+      onOpenQuiz={(subject, topic, taskType = "theory") => {
+        setQuizSubject(subject);
+        setQuizTopic(topic);
+        setQuizTaskType(taskType);
+        setShowQuiz(true);
+      }}
+      replanMessage={replanMessage}
+      onDismissReplanMessage={() => setReplanMessage(null)}
     />
   );
 }
