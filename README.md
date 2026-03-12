@@ -1,3 +1,12 @@
+# Tutor AI
+
+Assistente de estudos com IA que ajuda a **organizar o planejamento**, **cumprir a rotina** e **estudar com suporte por matéria**. O usuário define objetivos (ex.: ENEM, provas), matérias, tópicos e minutos por dia; o sistema gera metas e tarefas diárias, e oferece chat com tutor por disciplina, quiz e acompanhamento de progresso com gamificação (XP, níveis, conquistas) e insights semanais.
+
+**O que o usuário pode fazer:** fazer onboarding com tipo de prova e metas, ver tarefas do dia no Hub, marcar conclusões e dificuldade, usar timer Pomodoro, conversar com IA geral ou por matéria (com contexto do tópico), fazer quiz por tópico, editar plano e compromissos fixos, e acompanhar evolução em heatmap e relatório semanal.
+
+**Objetivo do projeto:** tornar o estudo mais **organizado**, **consistente** e **eficaz**, com um tutor por matéria e métricas claras de progresso, útil tanto para quem estuda sozinho quanto para uso em contexto acadêmico ou de pesquisa em educação.
+
+
 ## Pré-requisitos
 
 1. Node.js 18+ instalado
