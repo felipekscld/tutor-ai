@@ -1,34 +1,33 @@
 # Tutor AI
 
-Assistente de estudos com IA que ajuda a **organizar o planejamento**, **cumprir a rotina** e **estudar com suporte por matéria**. O usuário define objetivos (ex.: ENEM, provas), matérias, tópicos e minutos por dia; o sistema gera metas e tarefas diárias, e oferece chat com tutor por disciplina, quiz e acompanhamento de progresso com gamificação (XP, níveis, conquistas) e insights semanais.
+Study assistant with AI that helps **organize planning**, **stick to a routine**, and **study with per-subject support**. The user defines goals (e.g. ENEM, exams), subjects, topics, and minutes per day; the system generates goals and daily tasks, and offers chat with a tutor per subject, quiz, and progress tracking with gamification (XP, levels, achievements) and weekly insights.
 
-**O que o usuário pode fazer:** fazer onboarding com tipo de prova e metas, ver tarefas do dia no Hub, marcar conclusões e dificuldade, usar timer Pomodoro, conversar com IA geral ou por matéria (com contexto do tópico), fazer quiz por tópico, editar plano e compromissos fixos, e acompanhar evolução em heatmap e relatório semanal.
+**What the user can do:** complete onboarding with exam type and goals, see daily tasks in the Hub, mark completions and difficulty, use Pomodoro timer, chat with general or per-subject AI (with topic context), take quizzes by topic, edit plan and fixed commitments, and track progress via heatmap and weekly report.
 
-**Objetivo do projeto:** tornar o estudo mais **organizado**, **consistente** e **eficaz**, com um tutor por matéria e métricas claras de progresso, útil tanto para quem estuda sozinho quanto para uso em contexto acadêmico ou de pesquisa em educação.
+**Project goal:** make studying more **organized**, **consistent**, and **effective**, with a tutor per subject and clear progress metrics—useful both for self-study and for academic or education research contexts.
 
+## Prerequisites
 
-## Pré-requisitos
-
-1. Node.js 18+ instalado
-2. Firebase CLI instalado: `npm install -g firebase-tools`
-3. Conta Google para OAuth
-4. Chave API do Gemini: https://makersuite.google.com/app/apikey
+1. Node.js 18+ installed
+2. Firebase CLI installed: `npm install -g firebase-tools`
+3. Google account for OAuth
+4. Gemini API key: https://makersuite.google.com/app/apikey
 
 ---
 
-## Configuração 
+## Setup
 
-### 1. Firebase Console - Ativar Google OAuth
+### 1. Firebase Console — Enable Google OAuth
 
 ```
-1. Acesse: https://console.firebase.google.com
-2. Selecione projeto: tutor-ia-8a2fa
+1. Go to: https://console.firebase.google.com
+2. Select project: tutor-ia-8a2fa
 3. Menu: Authentication > Sign-in method
-4. Clique em "Google" > Enable
-5. Escolha email de suporte > Save
+4. Click "Google" > Enable
+5. Choose support email > Save
 ```
 
-### 2. Criar Arquivos de Ambiente
+### 2. Create Environment Files
 
 **web/.env.local**:
 ```env
@@ -37,13 +36,13 @@ VITE_TUTOR_ENDPOINT=http://localhost:5001/tutor-ia-8a2fa/us-central1/tutorChat
 
 **functions/.env.local**:
 ```env
-GEMINI_API_KEY=sua_chave_aqui
+GEMINI_API_KEY=your_api_key_here
 GEMINI_MODEL=gemini-2.0-flash
 ```
 
 ---
 
-## Iniciar Aplicação
+## Run the App
 
 ### Terminal 1 (Frontend)
 ```bash
@@ -52,12 +51,12 @@ npm install
 npm run dev
 ```
 
-### Terminal 2 (Backend - Emulador)
+### Terminal 2 (Backend — Emulator)
 ```bash
 firebase emulators:start
 ```
 
-### Acessar
+### Access
 ```
 Frontend: http://localhost:5173
 Firestore UI: http://localhost:4000
@@ -65,9 +64,9 @@ Firestore UI: http://localhost:4000
 
 ---
 
-## Testes
+## Tests
 
-### Testes Automatizados
+### Automated Tests
 ```bash
 cd web
 npm test              
@@ -75,46 +74,46 @@ npm run test:ui
 npm run test:coverage 
 ```
 
-Esperado: 18 testes passando (100%)
+Expected: 18 tests passing (100%)
 
-### Teste Manual Básico
+### Basic Manual Test
 
-1. Abra http://localhost:5173
-2. Clique "Entrar com Google"
+1. Open http://localhost:5173
+2. Click "Sign in with Google"
 3. Complete onboarding:
-   - Tipo: ENEM
-   - Matéria: Matemática, tópicos: Trigonometria, Cálculo
-   - Prioridade: 2
-   - Minutos: 120
-4. Veja Hub com tarefas do dia
-5. Marque uma tarefa como "Feito" + dificuldade
-6. Verifique KPIs atualizando
-7. Clique "Chats por Matéria" → Selecione "Matemática"
-8. Envie mensagem e veja IA especializada responder
+   - Type: ENEM
+   - Subject: Mathematics, topics: Trigonometry, Calculus
+   - Priority: 2
+   - Minutes: 120
+4. See Hub with daily tasks
+5. Mark a task as "Done" + difficulty
+6. Check KPIs updating
+7. Click "Chats by Subject" → Select "Mathematics"
+8. Send a message and see specialized AI respond
 
 ---
 
-## Estrutura de Dados
+## Data Structure
 
 ```
 users/{uid}/
   ├─ profile/default (onboarding)
   ├─ goals/{goalId} + goals_summary/current
-  ├─ schedule/{yyyy-mm-dd} (tarefas do dia)
-  ├─ activity_log/ (logs com subject/topic)
-  ├─ chats/{subject}/sessions/ (chat especializado)
-  ├─ chat_sessions/ (chat geral)
-  └─ settings/preferences (tema)
+  ├─ schedule/{yyyy-mm-dd} (daily tasks)
+  ├─ activity_log/ (logs with subject/topic)
+  ├─ chats/{subject}/sessions/ (subject-specific chat)
+  ├─ chat_sessions/ (general chat)
+  └─ settings/preferences (theme)
 ```
 
-## Comandos Úteis
+## Useful Commands
 
 ```bash
-# Desenvolvimento
+# Development
 npm run dev                
 firebase emulators:start   
 
-# Testes
+# Tests
 npm test                  
 npm run lint              
 
@@ -129,17 +128,17 @@ firebase functions:log
 
 ---
 
-## Documentação Adicional
+## Additional Documentation
 
-- firestore.rules - Regras de segurança
-- firestore.indexes.json - Índices compostos
-- firestore.test.js - Testes de segurança
+- firestore.rules — Security rules
+- firestore.indexes.json — Composite indexes
+- firestore.test.js — Security tests
 
 ---
 
-## Suporte
+## Support
 
-Para problemas ou dúvidas, verifique:
-1. Console do browser (F12) - logs detalhados
-2. Firebase Console - regras e índices
-3. Terminal - erros de backend
+For issues or questions, check:
+1. Browser console (F12) — detailed logs
+2. Firebase Console — rules and indexes
+3. Terminal — backend errors
