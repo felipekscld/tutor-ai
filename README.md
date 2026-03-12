@@ -1,5 +1,3 @@
-# Quick Start
-
 ## Pré-requisitos
 
 1. Node.js 18+ instalado
